@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Кошик</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container py-4">
+    <h2 class="mb-4">Ваш кошик</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% if cart %}
+    <ul class="list-group mb-4">
+        {% for item in cart %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            {{ item.name }} — {{ item.price }} грн
+            <form method="POST" action="{{ url_for('remove_from_cart', index=loop.index0) }}">
+                <button class="btn btn-sm btn-danger">Видалити</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+    <p><strong>Сума:</strong> {{ total }} грн</p>
+    <a href="{{ url_for('checkout') }}" class="btn btn-primary">Оформити замовлення</a>
+    {% else %}
+    <p>Кошик порожній.</p>
+    {% endif %}
+
+    <p class="mt-4"><a href="{{ url_for('home') }}">← Назад до магазину</a></p>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

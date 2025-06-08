@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>FlowerStream - Головна</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container py-4">
+    <h1 class="mb-4">FlowerStream</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <div class="mb-3">
+        {% if is_admin %}
+            <a href="{{ url_for('admin_logout') }}" class="btn btn-warning btn-sm">Вийти як адмін</a>
+        {% else %}
+            <a href="{{ url_for('admin_login') }}" class="btn btn-outline-primary btn-sm">Увійти як адмін</a>
+        {% endif %}
+        <a href="{{ url_for('view_cart') }}" class="btn btn-secondary btn-sm float-end">Кошик 🛒 ({{ cart_count }})</a>
+    </div>
+
+    <div class="row">
+        {% for flower in flowers %}
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <img src="{{ flower.image_url }}" class="card-img-top" alt="{{ flower.name }}">
+                <div class="card-body">
+                    {% if is_admin %}
+                    <form method="POST" action="{{ url_for('edit_flower', flower_id=flower.id) }}">
+                        <input type="text" class="form-control mb-2" name="name" value="{{ flower.name }}">
+                        <textarea class="form-control mb-2" name="description">{{ flower.description }}</textarea>
+                        <input type="number" class="form-control mb-2" name="price" value="{{ flower.price }}" step="0.01">
+                        <button class="btn btn-sm btn-success">Зберегти</button>
+                    </form>
+                    {% else %}
+                    <h5 class="card-title">{{ flower.name }}</h5>
+                    <p class="card-text">{{ flower.description }}</p>
+                    <p class="card-text fw-bold">{{ flower.price }} грн</p>
+                    <form method="POST" action="{{ url_for('add_to_cart', flower_id=flower.id) }}">
+                        <button class="btn btn-outline-success btn-sm">У кошик</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Вхід адміністратора</title>
+</head>
+<body>
+    <h2>Вхід адміністратора</h2>
+    <form method="post">
+        <label>Логін: <input type="text" name="username"></label><br>
+        <label>Пароль: <input type="password" name="password"></label><br>
+        <button type="submit">Увійти</button>
+    </form>
+    <p><a href="{{ url_for('home') }}">← На головну</a></p>
+</body>
+</html>
