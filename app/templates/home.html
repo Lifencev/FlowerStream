@@ -39,7 +39,7 @@
             {% endif %}
         </a>
         <!-- Кабінет -->
-        <a href="{{ url_for('admin_login') if not is_admin else url_for('admin_logout') }}" class="text-dark" title="Кабінет">
+        <a href="{{ url_for('login') if not session.get('user_id') else url_for('logout') }}" class="text-dark" title="Кабінет">
             <i class="bi bi-person fs-4"></i>
         </a>
     </div>
@@ -57,23 +57,45 @@
       {% endif %}
     {% endwith %}
 
+    {# Кнопки режиму редагування для адміна #}
+    {% if session.get('is_admin') %}
+    <div class="mb-4 text-center">
+        <form method="POST" action="{{ url_for('toggle_edit_mode') }}" class="d-inline-block">
+            {% if edit_mode %}
+            <button type="submit" class="btn btn-warning">Завершити редагування</button>
+            {% else %}
+            <button type="submit" class="btn btn-info">Редагувати товари</button>
+            {% endif %}
+        </form>
+    </div>
+    {% endif %}
+
     <div class="row">
         {% for flower in flowers %}
         <div class="col-md-4 mb-4">
             <div class="card h-100">
                 <img src="{{ flower.image_url }}" class="card-img-top" alt="{{ flower.name }}">
                 <div class="card-body">
-                    {% if is_admin %}
+                    {# Режим редагування для адміністратора #}
+                    {% if session.get('is_admin') and edit_mode %}
                     <form method="POST" action="{{ url_for('edit_flower', flower_id=flower.id) }}">
                         <input type="text" class="form-control mb-2" name="name" value="{{ flower.name }}">
                         <textarea class="form-control mb-2" name="description">{{ flower.description }}</textarea>
                         <input type="number" class="form-control mb-2" name="price" value="{{ flower.price }}" step="0.01">
                         <button class="btn btn-sm btn-success">Зберегти</button>
                     </form>
+                    {# Звичайний режим для користувачів або адмінів, які не ввімкнули редагування #}
                     {% else %}
                     <h5 class="card-title">{{ flower.name }}</h5>
                     <p class="card-text">{{ flower.description }}</p>
-                    <p class="card-text fw-bold">{{ flower.price }} грн</p>
+                    {# Змінено форматування ціни #}
+                    <p class="card-text fw-bold">
+                        {% if flower.price == flower.price | int %}
+                            {{ flower.price | int }} грн
+                        {% else %}
+                            {{ "%.2f"|format(flower.price) }} грн
+                        {% endif %}
+                    </p>
                     <form method="POST" action="{{ url_for('add_to_cart', flower_id=flower.id) }}">
                         <button class="btn btn-outline-success btn-sm">У кошик</button>
                     </form>

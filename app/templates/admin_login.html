@@ -2,25 +2,43 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Вхід адміністратора</title>
+    <title>Вхід</title> {# Змінено заголовок на більш загальний #}
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
     <div class="container py-4" style="max-width: 500px;">
-        <h2 class="mb-4">Вхід адміністратора</h2>
+        <h2 class="mb-4">Вхід</h2> {# Змінено заголовок на більш загальний #}
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
         <form method="post">
             <div class="mb-3">
                 <label for="username" class="form-label">Логін:</label>
-                <input type="text" class="form-control" id="username" name="username" placeholder="Введіть логін">
+                <input type="text" class="form-control" id="username" name="username" placeholder="Введіть логін" required>
             </div>
             <div class="mb-3">
                 <label for="password" class="form-label">Пароль:</label>
-                <input type="password" class="form-control" id="password" name="password" placeholder="Введіть пароль">
+                <input type="password" class="form-control" id="password" name="password" placeholder="Введіть пароль" required>
             </div>
             <button type="submit" class="btn btn-primary w-100" style="background-color: purple;">Увійти</button>
         </form>
         <p class="mt-3"><a href="{{ url_for('home') }}">← На головну</a></p>
+        <p class="mt-3">
+    Ще не маєте акаунта?
+    <a href="{{ url_for('register') }}">Зареєструватися</a> {# admin_login змінено на register #}
+</p>
+
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
 </body>
 </html>
