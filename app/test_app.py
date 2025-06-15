@@ -1,6 +1,7 @@
 import unittest
 from app import app, flowers
-from flask import get_flashed_messages 
+from flask import get_flashed_messages
+
 
 class FlaskAppTests(unittest.TestCase):
 
@@ -13,21 +14,20 @@ class FlaskAppTests(unittest.TestCase):
         with self.app as client:
             with client.session_transaction() as sess:
                 sess.clear()
-        print(f"\n--- Початок тесту: {self._testMethodName} ---") # Додаємо вивід початку тесту
+        print(f"\n--- Початок тесту: {self._testMethodName} ---")  # Додаємо вивід початку тесту
 
     # Цей метод виконується після кожного тесту
     def tearDown(self):
-        print(f"--- Кінець тесту: {self._testMethodName} ---\n") # Додаємо вивід кінця тесту
-
+        print(f"--- Кінець тесту: {self._testMethodName} ---\n")  # Додаємо вивід кінця тесту
 
     # Тест головної сторінки
     def test_home_page(self):
         print("  Виконуємо GET запит до '/'")
         response = self.app.get('/')
         print(f"  Статус код відповіді: {response.status_code}")
-        self.assertEqual(response.status_code, 200) 
+        self.assertEqual(response.status_code, 200)
         print("  Перевіряємо наявність 'FlowerStream' у відповіді.")
-        self.assertIn('FlowerStream', response.data.decode('utf-8')) 
+        self.assertIn('FlowerStream', response.data.decode('utf-8'))
         print("  Тест головної сторінки успішно завершено.")
 
     # Тест входу адміністратора (успішний)
@@ -37,18 +37,18 @@ class FlaskAppTests(unittest.TestCase):
             response = client.post('/admin/login', data=dict(
                 username='admin',
                 password='admin123'
-            ), follow_redirects=True) 
+            ), follow_redirects=True)
             print(f"  Статус код відповіді: {response.status_code}")
             self.assertEqual(response.status_code, 200)
-            
+
             flashed_messages = [str(m) for m in get_flashed_messages()]
             print(f"  Отримані Flash-повідомлення: {flashed_messages}")
             print("  Перевіряємо наявність 'Успішний вхід!' у Flash-повідомленнях.")
             self.assertIn('Успішний вхід!', flashed_messages)
-            
+
             with client.session_transaction() as sess:
                 print(f"  Перевіряємо стан сесії: admin_logged_in = {sess.get('admin_logged_in')}")
-                self.assertTrue(sess.get('admin_logged_in')) 
+                self.assertTrue(sess.get('admin_logged_in'))
             print("  Тест успішного входу адміністратора завершено.")
 
     # Тест входу адміністратора (невдалий)
@@ -61,15 +61,15 @@ class FlaskAppTests(unittest.TestCase):
             ), follow_redirects=True)
             print(f"  Статус код відповіді: {response.status_code}")
             self.assertEqual(response.status_code, 200)
-            
+
             flashed_messages = [str(m) for m in get_flashed_messages()]
             print(f"  Отримані Flash-повідомлення: {flashed_messages}")
             print("  Перевіряємо наявність 'Невірні дані' у Flash-повідомленнях.")
             self.assertIn('Невірні дані', flashed_messages)
-            
+
             with client.session_transaction() as sess:
                 print(f"  Перевіряємо стан сесії: admin_logged_in = {sess.get('admin_logged_in')}")
-                self.assertFalse(sess.get('admin_logged_in')) 
+                self.assertFalse(sess.get('admin_logged_in'))
             print("  Тест невдалого входу адміністратора завершено.")
 
     # Тест виходу адміністратора
@@ -82,12 +82,12 @@ class FlaskAppTests(unittest.TestCase):
             response = client.get('/admin/logout', follow_redirects=True)
             print(f"  Статус код відповіді: {response.status_code}")
             self.assertEqual(response.status_code, 200)
-            
+
             flashed_messages = [str(m) for m in get_flashed_messages()]
             print(f"  Отримані Flash-повідомлення: {flashed_messages}")
             print("  Перевіряємо наявність 'Ви вийшли з системи.' у Flash-повідомленнях.")
             self.assertIn('Ви вийшли з системи.', flashed_messages)
-            
+
             with client.session_transaction() as sess:
                 print(f"  Перевіряємо стан сесії: admin_logged_in = {sess.get('admin_logged_in')}")
                 self.assertFalse(sess.get('admin_logged_in'))
@@ -95,17 +95,17 @@ class FlaskAppTests(unittest.TestCase):
 
     # Тест додавання товару в кошик
     def test_add_to_cart(self):
-        flower_id = flowers[0]['id'] 
+        flower_id = flowers[0]['id']
         print(f"  Додаємо товар з ID {flower_id} до кошика.")
         with self.app as client:
             response = client.post(f'/add_to_cart/{flower_id}', follow_redirects=True)
             print(f"  Статус код відповіді: {response.status_code}")
             self.assertEqual(response.status_code, 200)
-            
+
             flashed_messages = [str(m) for m in get_flashed_messages()]
             print(f"  Отримані Flash-повідомлення: {flashed_messages}")
             self.assertIn(f"{flowers[0]['name']} додано до кошика.", flashed_messages)
-            
+
             with client.session_transaction() as sess:
                 cart = sess.get('cart')
                 print(f"  Вміст кошика у сесії: {cart}")
@@ -125,18 +125,18 @@ class FlaskAppTests(unittest.TestCase):
             response = client.post(f'/add_to_cart/{flower_id}', follow_redirects=True)
             print(f"  Статус код відповіді: {response.status_code}")
             self.assertEqual(response.status_code, 200)
-            
+
             flashed_messages = [str(m) for m in get_flashed_messages()]
             print(f"  Отримані Flash-повідомлення: {flashed_messages}")
             self.assertIn(f"{flowers[0]['name']} додано до кошика.", flashed_messages)
-            
+
             with client.session_transaction() as sess:
                 cart = sess.get('cart')
                 print(f"  Вміст кошика у сесії: {cart}")
                 self.assertIsNotNone(cart)
-                self.assertEqual(len(cart), 1) 
+                self.assertEqual(len(cart), 1)
                 self.assertEqual(cart[0]['id'], flower_id)
-                self.assertEqual(cart[0]['quantity'], 2) 
+                self.assertEqual(cart[0]['quantity'], 2)
             print("  Тест збільшення кількості товару в кошику завершено.")
 
     # Тест видалення товару з кошика
@@ -150,17 +150,17 @@ class FlaskAppTests(unittest.TestCase):
                 self.assertEqual(len(sess.get('cart', [])), 1)
 
             print("  Виконуємо POST запит для видалення першого елемента з кошика.")
-            response = client.post('/remove_from_cart/0', follow_redirects=True) 
+            response = client.post('/remove_from_cart/0', follow_redirects=True)
             print(f"  Статус код відповіді: {response.status_code}")
             self.assertEqual(response.status_code, 200)
-            
+
             flashed_messages = [str(m) for m in get_flashed_messages()]
             print(f"  Отримані Flash-повідомлення: {flashed_messages}")
             self.assertIn(f"{flowers[0]['name']} видалено з кошика.", flashed_messages)
-            
+
             with client.session_transaction() as sess:
                 print(f"  Кошик після видалення: {sess.get('cart', [])}")
-                self.assertEqual(len(sess.get('cart', [])), 0) 
+                self.assertEqual(len(sess.get('cart', [])), 0)
             print("  Тест видалення товару з кошика завершено.")
 
     # Тест збільшення кількості товару в кошику
@@ -188,7 +188,7 @@ class FlaskAppTests(unittest.TestCase):
             flower_id = flowers[0]['id']
             print(f"  Додаємо товар з ID {flower_id} двічі для початкової кількості 2.")
             client.post(f'/add_to_cart/{flower_id}')
-            client.post(f'/add_to_cart/{flower_id}') 
+            client.post(f'/add_to_cart/{flower_id}')
             with client.session_transaction() as sess:
                 print(f"  Початкова кількість товару: {sess['cart'][0]['quantity']}")
                 self.assertEqual(sess['cart'][0]['quantity'], 2)
@@ -218,7 +218,7 @@ class FlaskAppTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             with client.session_transaction() as sess:
                 print(f"  Кількість товару після спроби зменшення: {sess['cart'][0]['quantity']}")
-                self.assertEqual(sess['cart'][0]['quantity'], 1) 
+                self.assertEqual(sess['cart'][0]['quantity'], 1)
             print("  Тест зменшення кількості товару до 0 завершено.")
 
     # Тест перегляду кошика
@@ -248,14 +248,14 @@ class FlaskAppTests(unittest.TestCase):
             ), follow_redirects=True)
             print(f"  Статус код відповіді: {response.status_code}")
             self.assertEqual(response.status_code, 200)
-            
+
             flashed_messages = [str(m) for m in get_flashed_messages()]
             print(f"  Отримані Flash-повідомлення: {flashed_messages}")
             self.assertIn('Замовлення оформлено! Дякуємо!', flashed_messages)
-            
+
             with client.session_transaction() as sess:
                 print(f"  Перевіряємо стан кошика у сесії після оформлення: {sess.get('cart')}")
-                self.assertIsNone(sess.get('cart')) 
+                self.assertIsNone(sess.get('cart'))
             print("  Тест успішного оформлення замовлення завершено.")
 
     # Тест оформлення замовлення (невдалий - відсутні поля)
@@ -266,21 +266,21 @@ class FlaskAppTests(unittest.TestCase):
             client.post(f'/add_to_cart/{flower_id}')
             print("  Виконуємо POST запит до '/checkout' з відсутніми даними.")
             response = client.post('/checkout', data=dict(
-                full_name='', 
+                full_name='',
                 address='Київ, Україна',
                 notes='Додаткові нотатки',
                 agree='yes'
             ), follow_redirects=True)
             print(f"  Статус код відповіді: {response.status_code}")
             self.assertEqual(response.status_code, 200)
-            
+
             flashed_messages = [str(m) for m in get_flashed_messages()]
             print(f"  Отримані Flash-повідомлення: {flashed_messages}")
             self.assertIn("Заповніть обов'язкові поля та погодьтесь з умовами.", flashed_messages)
-            
+
             with client.session_transaction() as sess:
                 print(f"  Перевіряємо стан кошика у сесії: {sess.get('cart')}")
-                self.assertIsNotNone(sess.get('cart')) 
+                self.assertIsNotNone(sess.get('cart'))
             print("  Тест невдалого оформлення замовлення завершено.")
 
     # Тест реєстрації (успішний)
@@ -294,11 +294,11 @@ class FlaskAppTests(unittest.TestCase):
             ), follow_redirects=True)
             print(f"  Статус код відповіді: {response.status_code}")
             self.assertEqual(response.status_code, 200)
-            
+
             flashed_messages = [str(m) for m in get_flashed_messages()]
             print(f"  Отримані Flash-повідомлення: {flashed_messages}")
             self.assertIn('Реєстрація успішна! Тепер увійдіть.', flashed_messages)
-            
+
             print("  Перевіряємо перенаправлення на 'Вхід адміністратора'.")
             self.assertIn('Вхід адміністратора', response.data.decode('utf-8'))
             print("  Тест успішної реєстрації завершено.")
@@ -314,7 +314,7 @@ class FlaskAppTests(unittest.TestCase):
             ), follow_redirects=True)
             print(f"  Статус код відповіді: {response.status_code}")
             self.assertEqual(response.status_code, 200)
-            
+
             flashed_messages = [str(m) for m in get_flashed_messages()]
             print(f"  Отримані Flash-повідомлення: {flashed_messages}")
             self.assertIn('Паролі не збігаються.', flashed_messages)
@@ -327,11 +327,11 @@ class FlaskAppTests(unittest.TestCase):
             response = client.post('/register', data=dict(
                 username='testuser',
                 password='password',
-                confirm='' 
+                confirm=''
             ), follow_redirects=True)
             print(f"  Статус код відповіді: {response.status_code}")
             self.assertEqual(response.status_code, 200)
-            
+
             flashed_messages = [str(m) for m in get_flashed_messages()]
             print(f"  Отримані Flash-повідомлення: {flashed_messages}")
             self.assertIn('Будь ласка, заповніть усі поля.', flashed_messages)
@@ -345,11 +345,11 @@ class FlaskAppTests(unittest.TestCase):
             response = client.post(f'/add_to_favorites/{flower_id}', follow_redirects=True)
             print(f"  Статус код відповіді: {response.status_code}")
             self.assertEqual(response.status_code, 200)
-            
+
             flashed_messages = [str(m) for m in get_flashed_messages()]
             print(f"  Отримані Flash-повідомлення: {flashed_messages}")
             self.assertIn(f"{flowers[0]['name']} додано в обране.", flashed_messages)
-            
+
             with client.session_transaction() as sess:
                 favorites = sess.get('favorites')
                 print(f"  Вміст обраного у сесії: {favorites}")
@@ -368,15 +368,15 @@ class FlaskAppTests(unittest.TestCase):
             response = client.post(f'/add_to_favorites/{flower_id}', follow_redirects=True)
             print(f"  Статус код відповіді: {response.status_code}")
             self.assertEqual(response.status_code, 200)
-            
+
             flashed_messages = [str(m) for m in get_flashed_messages()]
             print(f"  Отримані Flash-повідомлення: {flashed_messages}")
             self.assertIn('Ця квітка вже в обраному.', flashed_messages)
-            
+
             with client.session_transaction() as sess:
                 favorites = sess.get('favorites')
                 print(f"  Вміст обраного у сесії: {favorites}")
-                self.assertEqual(len(favorites), 1) 
+                self.assertEqual(len(favorites), 1)
             print("  Тест додавання того ж товару до обраного завершено.")
 
     # Тест видалення товару з обраного
@@ -393,14 +393,14 @@ class FlaskAppTests(unittest.TestCase):
             response = client.post(f'/remove_from_favorites/{flower_id}', follow_redirects=True)
             print(f"  Статус код відповіді: {response.status_code}")
             self.assertEqual(response.status_code, 200)
-            
+
             flashed_messages = [str(m) for m in get_flashed_messages()]
             print(f"  Отримані Flash-повідомлення: {flashed_messages}")
             self.assertIn('Товар видалено з обраного.', flashed_messages)
-            
+
             with client.session_transaction() as sess:
                 print(f"  Обране після видалення: {sess.get('favorites', [])}")
-                self.assertEqual(len(sess.get('favorites', [])), 0) 
+                self.assertEqual(len(sess.get('favorites', [])), 0)
             print("  Тест видалення товару з обраного завершено.")
 
     # Тест перегляду обраного
@@ -422,7 +422,7 @@ class FlaskAppTests(unittest.TestCase):
             print("  Входимо як адмін для можливості редагування.")
             with client.session_transaction() as sess:
                 sess['admin_logged_in'] = True
-            
+
             new_name = 'Нова назва троянди'
             new_description = 'Оновлений опис'
             new_price = 175.50
@@ -434,11 +434,11 @@ class FlaskAppTests(unittest.TestCase):
             ), follow_redirects=True)
             print(f"  Статус код відповіді: {response.status_code}")
             self.assertEqual(response.status_code, 200)
-            
+
             flashed_messages = [str(m) for m in get_flashed_messages()]
             print(f"  Отримані Flash-повідомлення: {flashed_messages}")
             self.assertIn(f"Квітка #{flower_id} оновлена.", flashed_messages)
-            
+
             updated_flower = next((f for f in flowers if f['id'] == flower_id), None)
             print(f"  Оновлені дані квітки у списку: {updated_flower}")
             self.assertIsNotNone(updated_flower)
