@@ -4,10 +4,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 
 app = Flask(__name__)
-# ВАЖЛИВО: Змініть це на щось складне та унікальне для продакшну!
 app.secret_key = 'your_super_secret_key_here' 
 
-# --- Конфігурація бази даних ---
 DATABASE = 'database.db'
 
 def get_db_connection():
@@ -18,7 +16,7 @@ def get_db_connection():
     db = getattr(g, '_database', None)
     if db is None:
         db = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row # Дозволяє отримувати рядки як словники
+        db.row_factory = sqlite3.Row
     return db
 
 @app.teardown_appcontext
@@ -86,17 +84,14 @@ def init_db():
     # Перевіряємо, чи існує адміністратор за замовчуванням
     cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
     if cursor.fetchone()[0] == 0:
-        # Якщо адміністратора немає, додаємо його
         hashed_password = generate_password_hash('admin123') 
         cursor.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
                        ('admin', hashed_password, 'admin'))
         db.commit()
         print("Адміністратора за замовчуванням додано (логін: admin, пароль: admin123)")
     
-    # Перевіряємо, чи є вже квіти в таблиці products
     cursor.execute("SELECT COUNT(*) FROM products")
     if cursor.fetchone()[0] == 0:
-        # Якщо немає, додаємо початкові квіти
         initial_flowers_data = [
             {
                 'name': 'Троянда червона',
@@ -125,12 +120,9 @@ def init_db():
     
     print("База даних ініціалізована.")
 
-# Запускаємо ініціалізацію бази даних при старті додатка
 with app.app_context():
     init_db()
 
-
-# --- Допоміжні функції для роботи з товарами (квітами) з БД ---
 
 def load_products_from_db():
     """Завантажує всі товари (квіти) з таблиці products."""
@@ -145,12 +137,10 @@ def get_flower_by_id(flower_id):
     return cursor.fetchone()
 
 
-# --- Допоміжні функції для роботи з кошиком/обраним у БД ---
 
 def load_user_cart_from_db(user_id):
     """Завантажує кошик користувача з БД та повертає у форматі сесії."""
     db = get_db_connection()
-    # Використовуємо JOIN для отримання деталей про квіти
     cursor = db.execute("""
         SELECT ci.quantity, p.id, p.name, p.description, p.price, p.image_url
         FROM cart_items ci
@@ -174,9 +164,7 @@ def save_user_cart_to_db(user_id, cart_data):
     """Зберігає кошик користувача з сесії в БД."""
     db = get_db_connection()
     cursor = db.cursor()
-    # Спочатку видаляємо всі старі записи кошика для цього користувача
     cursor.execute("DELETE FROM cart_items WHERE user_id = ?", (user_id,))
-    # Потім вставляємо нові записи з сесії
     for item in cart_data:
         cursor.execute("INSERT INTO cart_items (user_id, flower_id, quantity) VALUES (?, ?, ?)",
                        (user_id, item['id'], item['quantity']))
@@ -185,7 +173,6 @@ def save_user_cart_to_db(user_id, cart_data):
 def load_user_favorites_from_db(user_id):
     """Завантажує обране користувача з БД та повертає у форматі сесії."""
     db = get_db_connection()
-    # Використовуємо JOIN для отримання деталей про квіти
     cursor = db.execute("""
         SELECT p.id, p.name, p.description, p.price, p.image_url
         FROM favorite_items fi
@@ -208,23 +195,19 @@ def save_user_favorites_to_db(user_id, favorites_data):
     """Зберігає обране користувача з сесії в БД."""
     db = get_db_connection()
     cursor = db.cursor()
-    # Спочатку видаляємо всі старі записи обраного для цього користувача
     cursor.execute("DELETE FROM favorite_items WHERE user_id = ?", (user_id,))
-    # Потім вставляємо нові записи з сесії
     for item in favorites_data:
         cursor.execute("INSERT INTO favorite_items (user_id, flower_id) VALUES (?, ?)",
                        (user_id, item['id']))
     db.commit()
 
 
-# --- Маршрути додатку ---
 
 @app.route('/')
 def home():
     is_admin = session.get('is_admin', False)
     user_logged_in = session.get('user_id') is not None
     
-    # Завантажуємо квіти з БД
     flowers = load_products_from_db() 
 
     cart = []
@@ -482,8 +465,6 @@ def register():
 
     return render_template('register.html')
 
-# --- Маршрути Обраного ---
-
 @app.route('/favorites')
 def view_favorites():
     if not session.get('user_id'):
@@ -544,8 +525,6 @@ def remove_from_favorites(flower_id):
     flash(f"Товар \"{flower_name}\" видалено з обраного.", "info") 
     return redirect(url_for('view_favorites'))
 
-# --- Маршрути для профілю та зміни пароля ---
-
 @app.route('/profile')
 def profile():
     if not session.get('user_id'):
@@ -593,8 +572,6 @@ def update_password():
         flash("Невірний старий пароль.", "danger")
         return redirect(url_for('profile'))
 
-
-# --- Додаємо користувацький фільтр 'date' для Jinja2 ---
 @app.template_filter('date')
 def format_date(value, format="%Y"):
     """
@@ -605,7 +582,6 @@ def format_date(value, format="%Y"):
         return datetime.datetime.now().strftime(format)
     elif isinstance(value, datetime.datetime):
         return value.strftime(format)
-    # Якщо це не datetime об'єкт і не "now", спробуємо перетворити на datetime
     try:
         dt_object = datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S") 
         return dt_object.strftime(format)
