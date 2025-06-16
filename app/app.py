@@ -1,12 +1,18 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, g
+from flask import Flask, render_template, request, redirect, url_for, flash, session, g, jsonify
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
+import os
+import stripe
+from config import Config
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = 'your_super_secret_key_here' 
-
-DATABASE = 'database.db'
+app.config.from_object(Config)
+stripe.api_key = app.config['STRIPE_SECRET_KEY']
+DATABASE = os.getenv('DATABASE')
 
 def get_db_connection():
     """
@@ -416,26 +422,61 @@ def checkout():
     if not user_id:
         flash('Будь ласка, увійдіть, щоб оформити замовлення.', 'info')
         return redirect(url_for('login'))
-        
-    if request.method == 'POST':
-        name = request.form.get('full_name')
-        address = request.form.get('address')
-        notes = request.form.get('notes')
-        agree = request.form.get('agree')
 
-        if not all([name, address, agree]):
-            flash("Заповніть обов'язкові поля та погодьтесь з умовами.", "danger")
-            return redirect(url_for('checkout'))
+    return render_template('checkout.html',
+                           publishable_key=app.config['STRIPE_PUBLISHABLE_KEY'])
 
-        db = get_db_connection()
-        db.execute("DELETE FROM cart_items WHERE user_id = ?", (user_id,))
-        db.commit()
 
-        session.pop('cart', None) 
-        flash("Замовлення оформлено! Дякуємо!", "success")
-        return redirect(url_for('home'))
+@app.route('/create-checkout-session', methods=['POST'])
+def create_checkout_session():
+    user_id = session.get('user_id')
+    if not user_id:
+        flash('Будь ласка, увійдіть, щоб оформити замовлення.', 'info')
+        return redirect(url_for('login'))
 
-    return render_template('checkout.html')
+    cart = session.get('cart', [])
+    if not cart:
+        flash('Ваш кошик порожній.', 'info')
+        return redirect(url_for('view_cart'))
+
+    line_items = []
+    for item in cart:
+        line_items.append({
+            'price_data': {
+                'currency': 'eur',
+                'product_data': {'name': item['name']},
+                'unit_amount': int(item['price'] * 100),
+            },
+            'quantity': item['quantity'],
+        })
+
+    checkout_session = stripe.checkout.Session.create(
+        payment_method_types=['card'],
+        line_items=line_items,
+        mode='payment',
+        success_url=url_for('checkout_success', _external=True)
+                    + '?session_id={CHECKOUT_SESSION_ID}',
+        cancel_url=url_for('checkout_cancel', _external=True),
+    )
+
+    return jsonify({'sessionId': checkout_session.id})
+
+
+@app.route('/checkout/success')
+def checkout_success():
+    user_id = session.get('user_id')
+    db = get_db_connection()
+    db.execute("DELETE FROM cart_items WHERE user_id = ?", (user_id,))
+    db.commit()
+    session.pop('cart', None)
+    flash("Оплата успішна! Дякуємо за замовлення.", "success")
+    return redirect(url_for('home'))
+
+@app.route('/checkout/cancel')
+def checkout_cancel():
+    flash("Оплата скасована, ви повернутися до кошика.", "warning")
+    return redirect(url_for('view_cart'))
+
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
