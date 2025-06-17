@@ -9,11 +9,11 @@
         body {
             display: flex;
             flex-direction: column;
-            min-height: 100vh; /* Забезпечує, що футер буде внизу сторінки */
+            min-height: 100vh;
             background-color: #f8f9fa;
         }
         .container.py-4 {
-            flex: 1; /* Дозволяє вмісту займати доступний простір */
+            flex: 1;
         }
         .bi {
             transition: color 0.2s ease;
@@ -28,21 +28,31 @@
             border-top: 1px solid #e7e7e7;
         }
         .social-icons a {
-            font-size: 1.8rem; /* Збільшити розмір іконок */
+            font-size: 1.8rem;
             margin: 0 10px;
             color: #495057;
             transition: color 0.3s ease;
         }
         .social-icons a:hover {
-            color: #800080; /* Фіолетовий колір при наведенні */
+            color: #800080;
+        }
+        .flower-card-img {
+            height: 300px;
+            object-fit: cover;
+        }
+        .btn-purple {
+            background-color: #800080;
+            color: white;
+        }
+        .btn-purple:hover {
+            background-color: #660066;
+            color: white;
         }
     </style>
 </head>
 <body>
 <div class="container py-4">
-    <!-- Верхній ряд з іконками -->
     <div class="d-flex justify-content-end align-items-center mb-3">
-        <!-- Обране -->
         <a href="{{ url_for('view_favorites') }}" class="text-dark me-3 position-relative" title="Улюблене">
             <i class="bi bi-heart fs-4"></i>
             {% set fav_count = favorites|length %}
@@ -53,7 +63,7 @@
             {% endif %}
         </a>
 
-        <!-- Кошик -->
+
         <a href="{{ url_for('view_cart') }}" class="text-dark me-3 position-relative" title="Кошик">
             <i class="bi bi-cart fs-4"></i>
             {% if cart_count > 0 %}
@@ -62,7 +72,7 @@
             </span>
             {% endif %}
         </a>
-        <!-- Кабінет -->
+
         <a href="{{ url_for('profile') if session.get('user_id') else url_for('login') }}" class="text-dark" title="Кабінет">
             <i class="bi bi-person fs-4"></i>
         </a>
@@ -84,13 +94,18 @@
     {# Кнопки режиму редагування для адміна #}
     {% if session.get('is_admin') %}
     <div class="mb-4 text-center">
-        <form method="POST" action="{{ url_for('toggle_edit_mode') }}" class="d-inline-block">
+        <form method="POST" action="{{ url_for('toggle_edit_mode') }}" class="d-inline-block me-2">
             {% if edit_mode %}
             <button type="submit" class="btn btn-warning">Завершити редагування</button>
             {% else %}
             <button type="submit" class="btn btn-info">Редагувати товари</button>
             {% endif %}
         </form>
+        {% if edit_mode %}
+        <button type="button" class="btn btn-primary btn-purple" data-bs-toggle="modal" data-bs-target="#addFlowerModal">
+            Додати новий товар
+        </button>
+        {% endif %}
     </div>
     {% endif %}
 
@@ -98,15 +113,22 @@
         {% for flower in flowers %}
         <div class="col-md-4 mb-4">
             <div class="card h-100">
-                <img src="{{ flower.image_url }}" class="card-img-top" alt="{{ flower.name }}">
+                <img src="{{ flower.image_url if flower.image_url else 'https://placehold.co/400x200/cccccc/333333?text=No+Image' }}" class="card-img-top flower-card-img" alt="{{ flower.name }}" onerror="this.onerror=null;this.src='https://placehold.co/400x200/cccccc/333333?text=No+Image';">
                 <div class="card-body">
                     {# Режим редагування для адміністратора #}
                     {% if session.get('is_admin') and edit_mode %}
-                    <form method="POST" action="{{ url_for('edit_flower', flower_id=flower.id) }}">
+                    <form method="POST" action="{{ url_for('edit_flower', flower_id=flower.id) }}" enctype="multipart/form-data">
                         <input type="text" class="form-control mb-2" name="name" value="{{ flower.name }}">
                         <textarea class="form-control mb-2" name="description">{{ flower.description }}</textarea>
                         <input type="number" class="form-control mb-2" name="price" value="{{ flower.price }}" step="0.01">
-                        <button class="btn btn-sm btn-success">Зберегти</button>
+                        <div class="mb-3">
+                            <label for="editFlowerImage-{{ flower.id }}" class="form-label">Змінити зображення</label>
+                            <input class="form-control" type="file" id="editFlowerImage-{{ flower.id }}" name="image" accept="image/*">
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-success w-100">Зберегти зміни</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('delete_flower', flower_id=flower.id) }}" class="mt-2" onsubmit="return confirm('Ви впевнені, що хочете видалити цей товар?');">
+                        <button type="submit" class="btn btn-sm btn-danger w-100">Видалити товар</button>
                     </form>
                     {# Звичайний режим для користувачів або адмінів, які не ввімкнули редагування #}
                     {% else %}
@@ -134,6 +156,39 @@
         {% endfor %}
     </div>
 </div>
+
+<div class="modal fade" id="addFlowerModal" tabindex="-1" aria-labelledby="addFlowerModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="addFlowerModalLabel">Додати новий товар</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form method="POST" action="{{ url_for('add_flower') }}" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label for="flowerName" class="form-label">Назва товару</label>
+            <input type="text" class="form-control" id="flowerName" name="name" required>
+          </div>
+          <div class="mb-3">
+            <label for="flowerDescription" class="form-label">Опис</label>
+            <textarea class="form-control" id="flowerDescription" name="description" rows="3"></textarea>
+          </div>
+          <div class="mb-3">
+            <label for="flowerPrice" class="form-label">Ціна (грн)</label>
+            <input type="number" class="form-control" id="flowerPrice" name="price" step="0.01" required>
+          </div>
+          <div class="mb-3">
+            <label for="flowerImage" class="form-label">Зображення товару</label>
+            <input class="form-control" type="file" id="flowerImage" name="image" accept="image/*">
+          </div>
+          <button type="submit" class="btn btn-purple w-100">Додати товар</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 <footer class="footer mt-auto">
     <div class="container text-end">
