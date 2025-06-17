@@ -6,6 +6,8 @@ import os
 import stripe
 from config import Config
 from dotenv import load_dotenv
+from werkzeug.utils import secure_filename
+import uuid
 
 load_dotenv()
 
@@ -13,6 +15,27 @@ app = Flask(__name__)
 app.config.from_object(Config)
 stripe.api_key = app.config['STRIPE_SECRET_KEY']
 DATABASE = os.getenv('DATABASE')
+
+UPLOAD_FOLDER = 'static/images'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+full_upload_path = os.path.join(app.root_path, UPLOAD_FOLDER)
+if not os.path.exists(full_upload_path):
+    try:
+        os.makedirs(full_upload_path)
+        print(f"Створено папку для завантажень: {full_upload_path}")
+    except OSError as e:
+        print(f"Помилка при створенні папки для завантажень {full_upload_path}: {e}")
+        flash(f"Помилка сервера: не вдалося створити папку для завантажень. {e}", "danger")
+
+
+def allowed_file(filename):
+    """
+    Перевіряє, чи дозволено розширення файлу.
+    """
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def get_db_connection():
     """
@@ -40,7 +63,6 @@ def init_db():
     db = get_db_connection()
     cursor = db.cursor()
     
-    # Створюємо таблицю users (користувачі)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,7 +72,6 @@ def init_db():
             )
         ''')
 
-    # Створюємо таблицю products (товари/квіти)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS products (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,7 +82,6 @@ def init_db():
         )
     ''')
 
-    # Створюємо таблицю cart_items (товари в кошику)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS cart_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,7 +94,6 @@ def init_db():
         )
     ''')
 
-    # Створюємо таблицю favorite_items (обрані товари)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS favorite_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,7 +106,6 @@ def init_db():
     ''')
     db.commit()
 
-    # Перевіряємо, чи існує адміністратор за замовчуванням
     cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
     if cursor.fetchone()[0] == 0:
         hashed_password = generate_password_hash('admin123') 
@@ -109,13 +127,13 @@ def init_db():
                 'name': 'Тюльпан жовтий',
                 'description': 'Яскравий тюльпан для гарного настрою.',
                 'price': 90,
-                'image_url': 'static/images/flower2.jpg' # <--- Змінено на flower2.jpg
+                'image_url': 'static/images/flower2.jpg'
             },
             {
                 'name': 'Лілія біла',
                 'description': 'Ніжна біла лілія – вишуканий подарунок.',
                 'price': 120,
-                'image_url': 'static/images/flower3.jpg' # <--- Змінено на flower3.jpg
+                'image_url': 'static/images/flower3.jpg'
             }
         ]
         for flower in initial_flowers_data:
@@ -287,8 +305,12 @@ def toggle_edit_mode():
     return redirect(url_for('home'))
 
 
-@app.route('/edit/<int:flower_id>', methods=['POST'])
+@app.route('/edit_flower/<int:flower_id>', methods=['POST'])
 def edit_flower(flower_id):
+    """
+    Редагує існуючий товар. Додано можливість завантаження нового зображення 
+    та видалення старого зображення.
+    """
     if not session.get('is_admin') or not session.get('edit_mode'):
         flash('Доступ заборонено. Увімкніть режим редагування, щоб редагувати квіти.', 'danger')
         return redirect(url_for('home')) 
@@ -296,15 +318,170 @@ def edit_flower(flower_id):
     name = request.form['name']
     description = request.form['description']
     price = float(request.form['price'])
-    
+    image_file = request.files.get('image')
+
     db = get_db_connection()
     cursor = db.cursor()
-    cursor.execute("UPDATE products SET name = ?, description = ?, price = ? WHERE id = ?",
-                   (name, description, price, flower_id))
-    db.commit()
 
-    flash(f"Товар \"{name}\" оновлено.", "success")
+    current_flower = get_flower_by_id(flower_id)
+    old_image_url = current_flower['image_url'] if current_flower else None
+    new_image_url = old_image_url
+
+    if image_file and image_file.filename != '':
+        if allowed_file(image_file.filename):
+            try:
+                original_filename = secure_filename(image_file.filename)
+                file_ext = original_filename.rsplit('.', 1)[1].lower()
+                unique_filename = f"{uuid.uuid4().hex}.{file_ext}"
+                
+                file_path = os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], unique_filename)
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                image_file.save(file_path)
+                
+                new_image_url = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename).replace("\\", "/")
+                flash(f"Нове зображення '{original_filename}' успішно завантажено.", "success")
+                print(f"Нове зображення збережено: {file_path}. URL для БД: {new_image_url}")
+
+                if old_image_url and "static/images/flower" not in old_image_url:
+                    old_file_path = os.path.join(app.root_path, old_image_url)
+                    if os.path.exists(old_file_path):
+                        try:
+                            os.remove(old_file_path)
+                            print(f"Старе зображення видалено: {old_file_path}")
+                        except OSError as e:
+                            print(f"Помилка при видаленні старого зображення {old_file_path}: {e}")
+                            flash(f"Помилка при видаленні старого зображення: {e}", "warning")
+            except Exception as e:
+                flash(f"Помилка при завантаженні нового зображення: {e}", "danger")
+                print(f"Помилка завантаження зображення: {e}")
+                return redirect(url_for('home'))
+        else:
+            flash("Недопустимий формат файлу зображення для оновлення.", "danger")
+            return redirect(url_for('home'))
+    
+    try:
+        cursor.execute("UPDATE products SET name = ?, description = ?, price = ?, image_url = ? WHERE id = ?",
+                       (name, description, price, new_image_url, flower_id))
+        db.commit()
+        flash(f"Товар \"{name}\" оновлено.", "success")
+    except Exception as e:
+        flash(f"Помилка при оновленні товару в базі даних: {e}", "danger")
+        print(f"Помилка БД при оновленні товару: {e}")
+        db.rollback()
+
     return redirect(url_for('home'))
+
+
+@app.route('/delete_flower/<int:flower_id>', methods=['POST'])
+def delete_flower(flower_id):
+    """
+    Видаляє товар з бази даних та пов'язане зображення.
+    Тільки для адміністраторів у режимі редагування.
+    """
+    if not session.get('is_admin') or not session.get('edit_mode'):
+        flash('Доступ заборонено. Увімкніть режим редагування, щоб видаляти квіти.', 'danger')
+        return redirect(url_for('home'))
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    flower = get_flower_by_id(flower_id)
+    if not flower:
+        flash("Товар не знайдено.", "danger")
+        return redirect(url_for('home'))
+
+    try:
+        cursor.execute("DELETE FROM products WHERE id = ?", (flower_id,))
+        db.commit()
+
+        if flower['image_url'] and "static/images/flower" not in flower['image_url']: # Пропускаємо початкові зображення
+            file_path = os.path.join(app.root_path, flower['image_url'])
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    print(f"Зображення видалено: {file_path}")
+                except OSError as e:
+                    print(f"Помилка при видаленні зображення {file_path}: {e}")
+                    flash(f"Помилка при видаленні зображення товару: {e}", "warning")
+        
+        flash(f"Товар \"{flower['name']}\" успішно видалено.", "success")
+    except Exception as e:
+        flash(f"Помилка при видаленні товару: {e}", "danger")
+        print(f"Помилка БД при видаленні товару: {e}")
+        db.rollback()
+
+    return redirect(url_for('home'))
+
+
+@app.route('/add_flower', methods=['POST'])
+def add_flower():
+    """
+    Додає новий товар (квітку) до бази даних.
+    Тільки для адміністраторів у режимі редагування.
+    """
+    if not session.get('is_admin') or not session.get('edit_mode'):
+        flash('Доступ заборонено. Увімкніть режим редагування, щоб додавати квіти.', 'danger')
+        return redirect(url_for('home'))
+
+    name = request.form.get('name')
+    description = request.form.get('description')
+    price = request.form.get('price')
+    image_file = request.files.get('image')
+
+    if not all([name, price]):
+        flash("Будь ласка, заповніть назву та ціну товару.", "danger")
+        return redirect(url_for('home'))
+
+    try:
+        price = float(price)
+    except ValueError:
+        flash("Ціна повинна бути числом.", "danger")
+        return redirect(url_for('home'))
+
+    image_url = None
+    if image_file and image_file.filename != '':
+        if allowed_file(image_file.filename):
+            try:
+                original_filename = secure_filename(image_file.filename)
+                file_ext = original_filename.rsplit('.', 1)[1].lower()
+                unique_filename = f"{uuid.uuid4().hex}.{file_ext}"
+                
+                file_path = os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], unique_filename)
+                
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+                image_file.save(file_path)
+                
+                image_url = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename).replace("\\", "/")
+                flash(f"Файл '{original_filename}' успішно завантажено.", "success")
+                print(f"Зображення збережено: {file_path}. URL для БД: {image_url}")
+            except Exception as e:
+                flash(f"Помилка при збереженні зображення: {e}", "danger")
+                print(f"Помилка збереження зображення: {e}")
+                return redirect(url_for('home'))
+        else:
+            flash("Недопустимий формат файлу зображення.", "danger")
+            return redirect(url_for('home'))
+    else:
+        flash("Товар буде додано без зображення.", "info")
+        print("Зображення не було надано або файл був порожнім.")
+
+
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        cursor.execute("INSERT INTO products (name, description, price, image_url) VALUES (?, ?, ?, ?)",
+                       (name, description, price, image_url))
+        db.commit()
+        flash(f"Товар \"{name}\" успішно додано.", "success")
+        print(f"Товар '{name}' додано до БД з URL: {image_url}")
+    except Exception as e:
+        flash(f"Помилка при додаванні товару до бази даних: {e}", "danger")
+        print(f"Помилка БД при додаванні товару: {e}")
+        db.rollback()
+    
+    return redirect(url_for('home'))
+
 
 @app.route('/add_to_cart/<int:flower_id>', methods=['POST'])
 def add_to_cart(flower_id):
@@ -559,7 +736,7 @@ def remove_from_favorites(flower_id):
     flower_name = flower_name_cursor['name'] if flower_name_cursor else "Невідомий товар"
 
     cursor.execute("DELETE FROM favorite_items WHERE user_id = ? AND flower_id = ?",
-                   (user_id, flower_id))
+                   (user_id, flower_name_cursor['id']))
     db.commit()
 
     session['favorites'] = load_user_favorites_from_db(user_id)
