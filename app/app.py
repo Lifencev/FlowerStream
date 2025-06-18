@@ -526,18 +526,26 @@ def add_to_cart(flower_id):
     db = get_db_connection()
     cursor = db.cursor()
 
+    try:
+        quantity = int(request.form.get('quantity', 1))
+        if quantity < 1:
+            quantity = 1
+    except (TypeError, ValueError):
+        quantity = 1
+
     cursor.execute("SELECT quantity FROM cart_items WHERE user_id = ? AND flower_id = ?", (user_id, flower_id))
     existing_item_db = cursor.fetchone()
 
     if existing_item_db:
-        new_quantity = existing_item_db['quantity'] + 1
+        new_quantity = existing_item_db['quantity'] + quantity
         cursor.execute("UPDATE cart_items SET quantity = ? WHERE user_id = ? AND flower_id = ?",
                        (new_quantity, user_id, flower_id))
         flash(f"{flower['name']} кількість збільшено до {new_quantity}.", "success")
     else:
         cursor.execute("INSERT INTO cart_items (user_id, flower_id, quantity) VALUES (?, ?, ?)",
-                       (user_id, flower_id, 1))
-        flash(f"{flower['name']} додано до кошика.", "success")
+                       (user_id, flower_id, quantity))
+        flash(f"{flower['name']} (x{quantity}) додано до кошика.", "success")
+
     db.commit()
 
     session['cart'] = load_user_cart_from_db(user_id)
