@@ -9,6 +9,18 @@ from dotenv import load_dotenv, find_dotenv
 from werkzeug.utils import secure_filename
 import uuid # Import uuid for generating unique filenames and reset tokens
 
+import requests
+
+def get_uah_to_eur_rate():
+    try:
+        response = requests.get("https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?valcode=EUR&json")
+        data = response.json()
+        rate = float(data[0]['rate'])
+        return rate
+    except Exception as e:
+        print(f"Не вдалося отримати курс НБУ: {e}")
+        return 50.0  # extra price in case of error of getting rate
+
 load_dotenv(find_dotenv())
 
 app = Flask(__name__)
@@ -352,8 +364,8 @@ def home():
         session.pop('favorites', None)
         session.pop('edit_mode', None)
 
-    return render_template('home.html', flowers=flowers, is_admin=is_admin, 
-                           cart_count=cart_count, favorites=favorites, 
+    return render_template('home.html', flowers=flowers, is_admin=is_admin,
+                           cart_count=cart_count, favorites=favorites,
                            user_logged_in=user_logged_in, edit_mode=edit_mode,
                            search_query=search_query) # Pass search_query to template
 
@@ -720,22 +732,28 @@ def decrease_quantity(index):
 
 @app.route('/cart')
 def view_cart():
-    """Route for viewing the cart."""
     if not session.get('user_id'):
         flash('Будь ласка, увійдіть, щоб переглянути ваш кошик.', 'info')
         return redirect(url_for('login'))
-        
+
     cart = session.get('cart', [])
     total = sum(item['price'] * item['quantity'] for item in cart)
 
-    # Pass cart_count and favorites for display in the top bar
+    exchange_rate = get_uah_to_eur_rate()
+    approx_total_eur = round(total / exchange_rate, 2) if exchange_rate else 0
+
     user_logged_in = session.get('user_id') is not None
     cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
     favorites = session.get('favorites', []) if user_logged_in else []
 
-    return render_template('cart.html', cart=cart, total=total,
-                           cart_count=cart_count, favorites=favorites,
-                           user_logged_in=user_logged_in)
+    return render_template('cart.html',
+                           cart=cart,
+                           total=total,
+                           cart_count=cart_count,
+                           favorites=favorites,
+                           user_logged_in=user_logged_in,
+                           exchange_rate=exchange_rate,
+                           approx_total_eur=approx_total_eur)
 
 @app.route('/checkout', methods=['GET', 'POST'])
 def checkout():
@@ -758,7 +776,6 @@ def checkout():
 
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
-    """Creates a Stripe Checkout session."""
     user_id = session.get('user_id')
     if not user_id:
         flash('Будь ласка, увійдіть, щоб оформити замовлення.', 'info')
@@ -769,13 +786,17 @@ def create_checkout_session():
         flash('Ваш кошик порожній.', 'info')
         return redirect(url_for('view_cart'))
 
+    exchange_rate = get_uah_to_eur_rate()
     line_items = []
+
     for item in cart:
+        price_uah = item['price']
+        price_eur = round(price_uah / exchange_rate, 2)
         line_items.append({
             'price_data': {
-                'currency': 'uah',
+                'currency': 'eur',
                 'product_data': {'name': item['name']},
-                'unit_amount': int(item['price'] * 100),
+                'unit_amount': int(price_eur * 100),  # rate uah to eur
             },
             'quantity': item['quantity'],
         })
@@ -784,8 +805,7 @@ def create_checkout_session():
         payment_method_types=['card'],
         line_items=line_items,
         mode='payment',
-        success_url=url_for('checkout_success', _external=True)
-                    + '?session_id={CHECKOUT_SESSION_ID}',
+        success_url=url_for('checkout_success', _external=True) + '?session_id={CHECKOUT_SESSION_ID}',
         cancel_url=url_for('checkout_cancel', _external=True),
     )
 
