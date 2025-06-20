@@ -20,7 +20,7 @@
             background-color: #ffffff;
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0,0,0,0.05);
-            flex: 1; /* Дозволяє профілю займати доступний простір */
+            flex: 1; /* Allows the profile content to take available space */
         }
         .form-section {
             border-top: 1px solid #eee;
@@ -53,48 +53,72 @@
     </style>
 </head>
 <body>
-    <div class="profile-container">
-        <h2 class="mb-4 text-center">Ваш профіль</h2>
+    <div class="container py-4">
+        <!-- Top row with icons -->
+        <div class="d-flex justify-content-end align-items-center mb-3">
+            <!-- Favorites -->
+            <a href="{{ url_for('view_favorites') }}" class="text-dark me-3 position-relative" title="Улюблене">
+                <i class="bi bi-heart fs-4"></i>
+                {% set fav_count = favorites|length %}
+                {% if fav_count > 0 %}
+                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                    {{ fav_count }}
+                </span>
+                {% endif %}
+            </a>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            {% for category, message in messages %}
-              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-              </div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
-
-        <div class="mb-4">
-            <h4 class="mb-3">Інформація про користувача</h4>
-            <p><strong>Логін:</strong> {{ username }}</p>
+            <!-- Cart -->
+            <a href="{{ url_for('view_cart') }}" class="text-dark me-3 position-relative" title="Кошик">
+                <i class="bi bi-cart fs-4"></i>
+                {% if cart_count > 0 %}
+                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                    {{ cart_count }}
+                </span>
+                {% endif %}
+            </a>
+            <!-- Account -->
+            <a href="{{ url_for('profile') if session.get('user_id') else url_for('login') }}" class="text-dark" title="Кабінет">
+                <i class="bi bi-person fs-4"></i>
+            </a>
         </div>
 
-        <div class="form-section">
-            <h4 class="mb-3">Змінити пароль</h4>
-            <form method="POST" action="{{ url_for('update_password') }}">
-                <div class="mb-3">
-                    <label for="old_password" class="form-label">Старий пароль</label>
-                    <input type="password" class="form-control" id="old_password" name="old_password" placeholder="Введіть старий пароль" required>
-                </div>
-                <div class="mb-3">
-                    <label for="new_password" class="form-label">Новий пароль</label>
-                    <input type="password" class="form-control" id="new_password" name="new_password" placeholder="Введіть новий пароль" required>
-                </div>
-                <div class="mb-3">
-                    <label for="confirm_new_password" class="form-label">Підтвердіть новий пароль</label>
-                    <input type="password" class="form-control" id="confirm_new_password" name="confirm_new_password" placeholder="Повторіть новий пароль" required>
-                </div>
-                <button type="submit" class="btn btn-purple w-100">Змінити пароль</button>
-            </form>
-        </div>
+        <div class="profile-container">
+            <h2 class="mb-4 text-center">Привіт, {{ username }}!</h2>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
 
-        <div class="mt-4 text-center">
-            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">Вийти з системи</a>
+            <div class="form-section">
+                <h3 class="mb-3 text-center">Змінити пароль</h3>
+                <form method="POST" action="{{ url_for('update_password') }}">
+                    <div class="mb-3">
+                        <label for="old_password" class="form-label">Старий пароль</label>
+                        <input type="password" class="form-control" id="old_password" name="old_password" placeholder="Введіть старий пароль" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="new_password" class="form-label">Новий пароль</label>
+                        <input type="password" class="form-control" id="new_password" name="new_password" placeholder="Введіть новий пароль" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="confirm_new_password" class="form-label">Підтвердіть новий пароль</label>
+                        <input type="password" class="form-control" id="confirm_new_password" name="confirm_new_password" placeholder="Повторіть новий пароль" required>
+                    </div>
+                    <button type="submit" class="btn btn-purple w-100">Змінити пароль</button>
+                </form>
+            </div>
+
+            <div class="mt-4 text-center">
+                <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">Вийти з системи</a>
+            </div>
+            <p class="mt-3 text-center"><a href="{{ url_for('home') }}">← На головну</a></p>
         </div>
-        <p class="mt-3 text-center"><a href="{{ url_for('home') }}">← На головну</a></p>
     </div>
 
     <footer class="footer mt-auto">

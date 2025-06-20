@@ -9,11 +9,11 @@
         body {
             display: flex;
             flex-direction: column;
-            min-height: 100vh; /* Забезпечує, що футер буде внизу сторінки */
+            min-height: 100vh; /* Ensures the footer is at the bottom of the page */
             background-color: #f8f9fa;
         }
         .container.py-4 {
-            flex: 1; /* Дозволяє вмісту займати доступний простір */
+            flex: 1; /* Allows content to take available space */
         }
         .bi {
             transition: color 0.2s ease;
@@ -28,21 +28,42 @@
             border-top: 1px solid #e7e7e7;
         }
         .social-icons a {
-            font-size: 1.8rem; /* Збільшити розмір іконок */
+            font-size: 1.8rem; /* Increase icon size */
             margin: 0 10px;
             color: #495057;
             transition: color 0.3s ease;
         }
         .social-icons a:hover {
-            color: #800080; /* Фіолетовий колір при наведенні */
+            color: #800080; /* Purple color on hover */
         }
+        .flower-card-img {
+            height: 300px; /* Fixed height for flower images */
+            object-fit: cover; /* Crop image to fill container */
+        }
+        .btn-purple {
+            background-color: #800080;
+            color: white;
+        }
+        .btn-purple:hover {
+            background-color: #660066;
+            color: white;
+        }
+        /* Style for product card link */
+        .card-link {
+            text-decoration: none; /* Remove underline */
+            color: inherit; /* Inherit text color */
+        }
+        .card-link:hover .card-title {
+            color: #800080; /* Change title color on hover */
+        }
+
     </style>
 </head>
 <body>
 <div class="container py-4">
-    <!-- Верхній ряд з іконками -->
+    <!-- Top row with icons -->
     <div class="d-flex justify-content-end align-items-center mb-3">
-        <!-- Обране -->
+        <!-- Favorites -->
         <a href="{{ url_for('view_favorites') }}" class="text-dark me-3 position-relative" title="Улюблене">
             <i class="bi bi-heart fs-4"></i>
             {% set fav_count = favorites|length %}
@@ -53,7 +74,7 @@
             {% endif %}
         </a>
 
-        <!-- Кошик -->
+        <!-- Cart -->
         <a href="{{ url_for('view_cart') }}" class="text-dark me-3 position-relative" title="Кошик">
             <i class="bi bi-cart fs-4"></i>
             {% if cart_count > 0 %}
@@ -62,7 +83,7 @@
             </span>
             {% endif %}
         </a>
-        <!-- Кабінет -->
+        <!-- Account -->
         <a href="{{ url_for('profile') if session.get('user_id') else url_for('login') }}" class="text-dark" title="Кабінет">
             <i class="bi bi-person fs-4"></i>
         </a>
@@ -81,16 +102,32 @@
       {% endif %}
     {% endwith %}
 
-    {# Кнопки режиму редагування для адміна #}
+    {# Product search #}
+    <form method="GET" action="{{ url_for('home') }}" class="mb-4">
+        <div class="input-group">
+            <input type="text" class="form-control" placeholder="Пошук товарів за назвою або описом..." name="search_query" value="{{ search_query if search_query }}">
+            <button class="btn btn-outline-secondary" type="submit">Пошук</button>
+            {% if search_query %}
+            <a href="{{ url_for('home') }}" class="btn btn-outline-danger">Скинути</a>
+            {% endif %}
+        </div>
+    </form>
+
+    {# Edit mode buttons for admin #}
     {% if session.get('is_admin') %}
     <div class="mb-4 text-center">
-        <form method="POST" action="{{ url_for('toggle_edit_mode') }}" class="d-inline-block">
+        <form method="POST" action="{{ url_for('toggle_edit_mode') }}" class="d-inline-block me-2">
             {% if edit_mode %}
             <button type="submit" class="btn btn-warning">Завершити редагування</button>
             {% else %}
             <button type="submit" class="btn btn-info">Редагувати товари</button>
             {% endif %}
         </form>
+        {% if edit_mode %}
+        <button type="button" class="btn btn-primary btn-purple" data-bs-toggle="modal" data-bs-target="#addFlowerModal">
+            Додати новий товар
+        </button>
+        {% endif %}
     </div>
     {% endif %}
 
@@ -98,19 +135,30 @@
         {% for flower in flowers %}
         <div class="col-md-4 mb-4">
             <div class="card h-100">
-                <img src="{{ flower.image_url }}" class="card-img-top" alt="{{ flower.name }}">
+                <a href="{{ url_for('product_detail', product_id=flower.id) }}" class="card-link">
+                    <img src="{{ flower.image_url if flower.image_url else 'https://placehold.co/400x200/cccccc/333333?text=No+Image' }}" class="card-img-top flower-card-img" alt="{{ flower.name }}" onerror="this.onerror=null;this.src='https://placehold.co/400x200/cccccc/333333?text=No+Image';">
+                </a>
                 <div class="card-body">
-                    {# Режим редагування для адміністратора #}
+                    {# Admin edit mode #}
                     {% if session.get('is_admin') and edit_mode %}
-                    <form method="POST" action="{{ url_for('edit_flower', flower_id=flower.id) }}">
+                    <form method="POST" action="{{ url_for('edit_flower', flower_id=flower.id) }}" enctype="multipart/form-data">
                         <input type="text" class="form-control mb-2" name="name" value="{{ flower.name }}">
                         <textarea class="form-control mb-2" name="description">{{ flower.description }}</textarea>
                         <input type="number" class="form-control mb-2" name="price" value="{{ flower.price }}" step="0.01">
-                        <button class="btn btn-sm btn-success">Зберегти</button>
+                        <div class="mb-3">
+                            <label for="editFlowerImage-{{ flower.id }}" class="form-label">Змінити зображення</label>
+                            <input class="form-control" type="file" id="editFlowerImage-{{ flower.id }}" name="image" accept="image/*">
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-success w-100">Зберегти зміни</button>
                     </form>
-                    {# Звичайний режим для користувачів або адмінів, які не ввімкнули редагування #}
+                    <form method="POST" action="{{ url_for('delete_flower', flower_id=flower.id) }}" class="mt-2" onsubmit="return confirm('Ви впевнені, що хочете видалити цей товар?');">
+                        <button type="submit" class="btn btn-sm btn-danger w-100">Видалити товар</button>
+                    </form>
+                    {# Normal mode for users or admins not in edit mode #}
                     {% else %}
-                    <h5 class="card-title">{{ flower.name }}</h5>
+                    <a href="{{ url_for('product_detail', product_id=flower.id) }}" class="card-link">
+                        <h5 class="card-title">{{ flower.name }}</h5>
+                    </a>
                     <p class="card-text">{{ flower.description }}</p>
                     <p class="card-text fw-bold">
                         {% if flower.price == flower.price | int %}
@@ -119,11 +167,14 @@
                             {{ "%.2f"|format(flower.price) }} грн
                         {% endif %}
                     </p>
-                    <form method="POST" action="{{ url_for('add_to_cart', flower_id=flower.id) }}">
-                        <button class="btn btn-outline-success btn-sm">У кошик</button>
+                    <form method="POST" action="{{ url_for('add_to_cart', flower_id=flower.id) }}" class="mt-2">
+                        <div class="input-group mb-2">
+                            <input type="number" name="quantity" class="form-control" value="1" min="1" aria-label="Кількість" aria-describedby="add-to-cart-button">
+                            <button class="btn btn-outline-success" type="submit" id="add-to-cart-button">У кошик</button>
+                        </div>
                     </form>
                     <form method="POST" action="{{ url_for('add_to_favorites', flower_id=flower.id) }}">
-                        <button class="btn btn-outline-danger btn-sm mt-2">
+                        <button class="btn btn-outline-danger btn-sm mt-2 w-100">
                             <i class="bi bi-heart"></i> До обраного
                         </button>
                     </form>
@@ -134,6 +185,40 @@
         {% endfor %}
     </div>
 </div>
+
+<!-- Modal for adding new product -->
+<div class="modal fade" id="addFlowerModal" tabindex="-1" aria-labelledby="addFlowerModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="addFlowerModalLabel">Додати новий товар</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form method="POST" action="{{ url_for('add_flower') }}" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label for="flowerName" class="form-label">Назва товару</label>
+            <input type="text" class="form-control" id="flowerName" name="name" required>
+          </div>
+          <div class="mb-3">
+            <label for="flowerDescription" class="form-label">Опис</label>
+            <textarea class="form-control" id="flowerDescription" name="description" rows="3"></textarea>
+          </div>
+          <div class="mb-3">
+            <label for="flowerPrice" class="form-label">Ціна (грн)</label>
+            <input type="number" class="form-control" id="flowerPrice" name="price" step="0.01" required>
+          </div>
+          <div class="mb-3">
+            <label for="flowerImage" class="form-label">Зображення товару</label>
+            <input class="form-control" type="file" id="flowerImage" name="image" accept="image/*">
+          </div>
+          <button type="submit" class="btn btn-purple w-100">Додати товар</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 <footer class="footer mt-auto">
     <div class="container text-end">
