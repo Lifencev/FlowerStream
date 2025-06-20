@@ -234,21 +234,35 @@ with app.app_context():
     init_db()
 
 
-def load_products_from_db(search_term=None):
+def load_products_from_db(search_term=None, sort_order=None):
     """
     Loads all products (flowers) from the products table.
     If search_term is provided, filters products by name or description.
     """
     db = get_db_connection()
     cursor = db.cursor()
+
+    base_query = "SELECT * FROM products"
+    conditions = []
+    params = []
+
     if search_term:
+        conditions.append("(name LIKE ? OR description LIKE ?)")
         search_pattern = f"%{search_term}%"
-        cursor.execute(
-            "SELECT * FROM products WHERE name LIKE ? OR description LIKE ? ORDER BY id ASC",
-            (search_pattern, search_pattern)
-        )
+        params.extend([search_pattern, search_pattern])
+
+    if conditions:
+        base_query += " WHERE " + " AND ".join(conditions)
+
+    # Sorting
+    if sort_order == 'price_asc':
+        base_query += " ORDER BY price ASC"
+    elif sort_order == 'price_desc':
+        base_query += " ORDER BY price DESC"
     else:
-        cursor.execute("SELECT * FROM products ORDER BY id ASC")
+        base_query += " ORDER BY id ASC"
+
+    cursor.execute(base_query, params)
     return cursor.fetchall()
 
 def get_flower_by_id(flower_id):
@@ -346,9 +360,10 @@ def save_user_favorites_to_db(user_id, favorites_data):
 def home():
     is_admin = session.get('is_admin', False)
     user_logged_in = session.get('user_id') is not None
-    
+
     search_query = request.args.get('search_query') # Get search query
-    flowers = load_products_from_db(search_query) # Pass it to the loading function
+    sort_order = request.args.get('sort')  # 'price_asc' or 'price_desc'
+    flowers = load_products_from_db(search_query, sort_order) # Pass it to the loading function
 
     cart = []
     cart_count = 0
@@ -732,6 +747,7 @@ def decrease_quantity(index):
 
 @app.route('/cart')
 def view_cart():
+    """Visualise items in user's cart"""
     if not session.get('user_id'):
         flash('Будь ласка, увійдіть, щоб переглянути ваш кошик.', 'info')
         return redirect(url_for('login'))

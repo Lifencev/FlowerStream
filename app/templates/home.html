@@ -113,6 +113,19 @@
         </div>
     </form>
 
+    {# Sorting selector #}
+    <form method="get" class="mb-4 d-flex align-items-center" id="sortForm">
+        {% if search_query %}
+        <input type="hidden" name="search_query" value="{{ search_query }}">
+        {% endif %}
+        <label for="sort" class="me-2 fw-semibold">Сортувати:</label>
+        <select name="sort" id="sort" class="form-select w-auto" onchange="document.getElementById('sortForm').submit();">
+            <option value="">Хрогологія додавання товару на сайт</option>
+            <option value="price_asc" {% if request.args.get('sort') == 'price_asc' %}selected{% endif %}>Спочатку дешевше</option>
+            <option value="price_desc" {% if request.args.get('sort') == 'price_desc' %}selected{% endif %}>Спочатку дорожче</option>
+        </select>
+    </form>
+
     {# Edit mode buttons for admin #}
     {% if session.get('is_admin') %}
     <div class="mb-4 text-center">
