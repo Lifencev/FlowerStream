@@ -50,75 +50,155 @@
         .social-icons a:hover {
             color: #800080;
         }
+        /* Navbar specific styles */
+        .navbar-brand {
+            font-size: 1.7rem;
+            font-weight: bold;
+            color: #800080 !important;
+        }
+        .navbar-nav .nav-link {
+            font-size: 1.1rem;
+        }
+
+        /* Styles for the icon container and badge to prevent shifting */
+        .icon-badge-container {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.5em; /* Fixed width to prevent shift */
+            height: 1.5em; /* Fixed height */
+            vertical-align: middle;
+            margin-left: 5px; /* Space between text and icon */
+        }
+
+        .icon-badge-container .bi {
+            font-size: 1.2em;
+        }
+
+        .icon-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            font-size: 0.6em;
+            padding: 0.15em 0.4em;
+            line-height: 1;
+            min-width: 1.2em;
+            text-align: center;
+            transform: translate(50%, -50%);
+            z-index: 1;
+            border-radius: 50%;
+        }
+
+        .navbar-nav .nav-link {
+            display: flex;
+            align-items: center;
+            min-height: 40px; /* To prevent vertical shift, ensure enough space for content + icon + badge */
+        }
     </style>
 </head>
 <body>
-    <div class="container py-4">
-        <!-- Top row with icons -->
-        <div class="d-flex justify-content-end align-items-center mb-3">
-            <!-- Favorites -->
-            <a href="{{ url_for('view_favorites') }}" class="text-dark me-3 position-relative" title="Улюблене">
-                <i class="bi bi-heart fs-4"></i>
-                {% set fav_count = favorites|length %}
-                {% if fav_count > 0 %}
-                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                    {{ fav_count }}
-                </span>
-                {% endif %}
-            </a>
-
-            <!-- Cart -->
-            <a href="{{ url_for('view_cart') }}" class="text-dark me-3 position-relative" title="Кошик">
-                <i class="bi bi-cart fs-4"></i>
-                {% if cart_count > 0 %}
-                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                    {{ cart_count }}
-                </span>
-                {% endif %}
-            </a>
-            <!-- Account -->
-            <a href="{{ url_for('profile') if session.get('user_id') else url_for('login') }}" class="text-dark" title="Кабінет">
-                <i class="bi bi-person fs-4"></i>
-            </a>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light shadow-sm">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('home') }}">FlowerStream</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link" aria-current="page" href="{{ url_for('home') }}">Головна</a>
+                    </li>
+                    {% if user_logged_in %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('view_cart') }}">
+                            Кошик
+                            <span class="icon-badge-container">
+                                <i class="bi bi-cart"></i>
+                                {% if cart_count > 0 %}<span class="badge bg-danger rounded-pill icon-badge">{{ cart_count }}</span>{% endif %}
+                            </span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('view_favorites') }}">
+                            Обране
+                            <span class="icon-badge-container">
+                                <i class="bi bi-heart"></i>
+                                {% if favorites|length > 0 %}<span class="badge bg-primary rounded-pill icon-badge">{{ favorites|length }}</span>{% endif %}
+                            </span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('orders_history') }}">Історія замовлень</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{{ url_for('profile') }}">Профіль</a>
+                    </li>
+                    {% endif %}
+                </ul>
+                <ul class="navbar-nav">
+                    {% if user_logged_in %}
+                        <li class="nav-item">
+                            <span class="nav-link text-dark">Привіт, {{ session.username }}!</span>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link btn btn-outline-danger btn-sm" href="{{ url_for('logout') }}">Вийти</a>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link btn btn-outline-primary btn-sm me-2" href="{{ url_for('login') }}">Увійти</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link btn btn-primary btn-sm" href="{{ url_for('register') }}" style="background-color: purple; color: white;">Реєстрація</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
         </div>
+    </nav>
 
-        <div class="profile-container">
-            <h2 class="mb-4 text-center">Привіт, {{ username }}!</h2>
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
+    <div class="container py-4 profile-container">
+        <h1 class="mb-4 text-center">Ваш профіль</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
                     <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
                         {{ message }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
 
-            <div class="form-section">
-                <h3 class="mb-3 text-center">Змінити пароль</h3>
-                <form method="POST" action="{{ url_for('update_password') }}">
-                    <div class="mb-3">
-                        <label for="old_password" class="form-label">Старий пароль</label>
-                        <input type="password" class="form-control" id="old_password" name="old_password" placeholder="Введіть старий пароль" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="new_password" class="form-label">Новий пароль</label>
-                        <input type="password" class="form-control" id="new_password" name="new_password" placeholder="Введіть новий пароль" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="confirm_new_password" class="form-label">Підтвердіть новий пароль</label>
-                        <input type="password" class="form-control" id="confirm_new_password" name="confirm_new_password" placeholder="Повторіть новий пароль" required>
-                    </div>
-                    <button type="submit" class="btn btn-purple w-100">Змінити пароль</button>
-                </form>
-            </div>
-
-            <div class="mt-4 text-center">
-                <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">Вийти з системи</a>
-            </div>
-            <p class="mt-3 text-center"><a href="{{ url_for('home') }}">← На головну</a></p>
+        <div class="text-center mb-4">
+            <p class="lead">Привіт, <strong>{{ username }}</strong>!</p>
+            <p class="text-muted">Тут ви можете керувати своїми особистими даними.</p>
         </div>
+
+        <div class="form-section">
+            <h3 class="mb-3 text-center">Змінити пароль</h3>
+            <form action="{{ url_for('update_password') }}" method="post">
+                <div class="mb-3">
+                    <label for="old_password" class="form-label">Старий пароль</label>
+                    <input type="password" class="form-control" id="old_password" name="old_password" required>
+                </div>
+                <div class="mb-3">
+                    <label for="new_password" class="form-label">Новий пароль</label>
+                    <input type="password" class="form-control" id="new_password" name="new_password" required>
+                </div>
+                <div class="mb-3">
+                    <label for="confirm_new_password" class="form-label">Підтвердіть новий пароль</label>
+                    <input type="password" class="form-control" id="confirm_new_password" name="confirm_new_password" required>
+                </div>
+                <button type="submit" class="btn btn-purple w-100">Змінити пароль</button>
+            </form>
+        </div>
+
+        <div class="mt-4 text-center">
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">Вийти з системи</a>
+        </div>
+        <p class="mt-3 text-center"><a href="{{ url_for('home') }}">← На головну</a></p>
     </div>
 
     <footer class="footer mt-auto">

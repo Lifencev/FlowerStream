@@ -2,9 +2,10 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Адмін-панель</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Історія замовлень - FlowerStream</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <style>
         body {
             display: flex;
@@ -39,6 +40,57 @@
         .navbar-nav .nav-link {
             font-size: 1.1rem;
         }
+        .icon-badge-container {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.5em;
+            height: 1.5em;
+            vertical-align: middle;
+            margin-left: 5px;
+        }
+        .icon-badge-container .bi {
+            font-size: 1.2em;
+        }
+        .icon-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            font-size: 0.6em;
+            padding: 0.15em 0.4em;
+            line-height: 1;
+            min-width: 1.2em;
+            text-align: center;
+            transform: translate(50%, -50%);
+            z-index: 1;
+            border-radius: 50%;
+        }
+        .navbar-nav .nav-link {
+            display: flex;
+            align-items: center;
+            min-height: 40px;
+        }
+        .order-card {
+            margin-bottom: 20px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+            border-radius: 8px;
+        }
+        .order-status-pending {
+            color: orange;
+            font-weight: bold;
+        }
+        .order-status-confirmed {
+            color: green;
+            font-weight: bold;
+        }
+        .order-item-img {
+            width: 50px;
+            height: 50px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
     </style>
 </head>
 <body>
@@ -55,25 +107,29 @@
                     </li>
                     {% if user_logged_in %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('view_cart') }}">Кошик</a>
+                        <a class="nav-link" href="{{ url_for('view_cart') }}">
+                            Кошик
+                            <span class="icon-badge-container">
+                                <i class="bi bi-cart"></i>
+                                {% if cart_count > 0 %}<span class="badge bg-danger rounded-pill icon-badge">{{ cart_count }}</span>{% endif %}
+                            </span>
+                        </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('view_favorites') }}">Обране</a>
+                        <a class="nav-link" href="{{ url_for('view_favorites') }}">
+                            Обране
+                            <span class="icon-badge-container">
+                                <i class="bi bi-heart"></i>
+                                {% if favorites|length > 0 %}<span class="badge bg-primary rounded-pill icon-badge">{{ favorites|length }}</span>{% endif %}
+                            </span>
+                        </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('orders_history') }}">Історія замовлень</a>
+                        <a class="nav-link active" href="{{ url_for('orders_history') }}">Історія замовлень</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('profile') }}">Профіль</a>
                     </li>
-                    {% if session.is_admin %}
-                    <li class="nav-item">
-                        <a class="nav-link active" href="{{ url_for('admin_dashboard') }}">Адмін-панель</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('admin_orders') }}">Управління замовленнями</a>
-                    </li>
-                    {% endif %}
                     {% endif %}
                 </ul>
                 <ul class="navbar-nav">
@@ -98,7 +154,7 @@
     </nav>
 
     <div class="container py-4">
-        <h1 class="mb-4 text-center">Адмін-панель</h1>
+        <h1 class="mb-4 text-center">Історія ваших замовлень</h1>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
@@ -111,13 +167,38 @@
             {% endif %}
         {% endwith %}
 
-        <div class="list-group">
-            <a href="{{ url_for('home') }}" class="list-group-item list-group-item-action">Керувати товарами (перейти на головну сторінку з режимом редагування)</a>
-            <a href="{{ url_for('admin_orders') }}" class="list-group-item list-group-item-action">Управління замовленнями</a>
-        </div>
+        {% if orders %}
+            {% for order in orders %}
+            <div class="card order-card">
+                <div class="card-header bg-light">
+                    Замовлення №{{ order.id }} - <span class="
+                        {% if order.status == 'Очікується' %}order-status-pending
+                        {% elif order.status == 'Підтверджено' %}order-status-confirmed
+                        {% endif %}">{{ order.status }}</span>
+                    <span class="float-end">{{ order.created_at }}</span>
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">Загальна сума: {{ "%.2f"|format(order.total_amount) }} грн</h5>
+                    <p class="card-text">Товари:</p>
+                    <ul class="list-group list-group-flush">
+                        {% for item in order['items'] %}
+                        <li class="list-group-item d-flex align-items-center">
+                            <img src="{{ url_for('static', filename=item.image_url.split('static/')[-1]) }}" alt="{{ item.name }}" class="order-item-img">
+                            {{ item.name }} (x{{ item.quantity }}) - {{ "%.2f"|format(item.price_at_purchase) }} грн за од.
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="alert alert-info text-center">
+                Ви ще не зробили жодного замовлення.
+            </div>
+        {% endif %}
 
         <div class="mt-4 text-center">
-            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">Вийти з системи</a>
+            <a href="{{ url_for('home') }}" class="btn btn-secondary">← Повернутися на головну</a>
         </div>
     </div>
 

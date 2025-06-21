@@ -43,80 +43,151 @@
         transition: color 0.3s ease;
     }
     .social-icons a:hover {
-        color: #800080; /* Purple color on hover */
+        color: #800080;
+    }
+
+    /* Navbar specific styles */
+    .navbar-brand {
+        font-size: 1.7rem;
+        font-weight: bold;
+        color: #800080 !important;
+    }
+    .navbar-nav .nav-link {
+        font-size: 1.1rem;
+    }
+
+    /* Styles for the icon container and badge to prevent shifting */
+    .icon-badge-container {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5em; /* Fixed width to prevent shift */
+        height: 1.5em; /* Fixed height */
+        vertical-align: middle;
+        margin-left: 5px; /* Space between text and icon */
+    }
+
+    .icon-badge-container .bi {
+        font-size: 1.2em;
+    }
+
+    .icon-badge {
+        position: absolute;
+        top: 0;
+        right: 0;
+        font-size: 0.6em;
+        padding: 0.15em 0.4em;
+        line-height: 1;
+        min-width: 1.2em;
+        text-align: center;
+        transform: translate(50%, -50%);
+        z-index: 1;
+        border-radius: 50%;
+    }
+
+    .navbar-nav .nav-link {
+        display: flex;
+        align-items: center;
+        min-height: 40px; /* To prevent vertical shift, ensure enough space for content + icon + badge */
     }
   </style>
 </head>
 <body>
+  <nav class="navbar navbar-expand-lg navbar-light bg-light shadow-sm">
+      <div class="container">
+          <a class="navbar-brand" href="{{ url_for('home') }}">FlowerStream</a>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+              <span class="navbar-toggler-icon"></span>
+          </button>
+          <div class="collapse navbar-collapse" id="navbarNav">
+              <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                  <li class="nav-item">
+                      <a class="nav-link" aria-current="page" href="{{ url_for('home') }}">Головна</a>
+                  </li>
+                  {% if user_logged_in %}
+                  <li class="nav-item">
+                      <a class="nav-link" href="{{ url_for('view_cart') }}">
+                          Кошик
+                          <span class="icon-badge-container">
+                              <i class="bi bi-cart"></i>
+                              {% if cart_count > 0 %}<span class="badge bg-danger rounded-pill icon-badge">{{ cart_count }}</span>{% endif %}
+                          </span>
+                      </a>
+                  </li>
+                  <li class="nav-item">
+                      <a class="nav-link active" href="{{ url_for('view_favorites') }}">
+                          Обране
+                          <span class="icon-badge-container">
+                              <i class="bi bi-heart"></i>
+                              {% if favorites|length > 0 %}<span class="badge bg-primary rounded-pill icon-badge">{{ favorites|length }}</span>{% endif %}
+                          </span>
+                      </a>
+                  </li>
+                  <li class="nav-item">
+                      <a class="nav-link" href="{{ url_for('orders_history') }}">Історія замовлень</a>
+                  </li>
+                  <li class="nav-item">
+                      <a class="nav-link" href="{{ url_for('profile') }}">Профіль</a>
+                  </li>
+                  {% endif %}
+              </ul>
+              <ul class="navbar-nav">
+                  {% if user_logged_in %}
+                      <li class="nav-item">
+                          <span class="nav-link text-dark">Привіт, {{ session.username }}!</span>
+                      </li>
+                      <li class="nav-item">
+                          <a class="nav-link btn btn-outline-danger btn-sm" href="{{ url_for('logout') }}">Вийти</a>
+                      </li>
+                  {% else %}
+                      <li class="nav-item">
+                          <a class="nav-link btn btn-outline-primary btn-sm me-2" href="{{ url_for('login') }}">Увійти</a>
+                      </li>
+                      <li class="nav-item">
+                          <a class="nav-link btn btn-primary btn-sm" href="{{ url_for('register') }}" style="background-color: purple; color: white;">Реєстрація</a>
+                      </li>
+                  {% endif %}
+              </ul>
+          </div>
+      </div>
+  </nav>
+
   <div class="container py-4">
-    <!-- Top row with icons -->
-    <div class="d-flex justify-content-end align-items-center mb-3">
-        <!-- Favorites -->
-        <a href="{{ url_for('view_favorites') }}" class="text-dark me-3 position-relative" title="Улюблене">
-            <i class="bi bi-heart fs-4"></i>
-            {% set fav_count = favorites|length %}
-            {% if fav_count > 0 %}
-            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                {{ fav_count }}
-            </span>
-            {% endif %}
-        </a>
-
-        <!-- Cart -->
-        <a href="{{ url_for('view_cart') }}" class="text-dark me-3 position-relative" title="Кошик">
-            <i class="bi bi-cart fs-4"></i>
-            {% if cart_count > 0 %}
-            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                {{ cart_count }}
-            </span>
-            {% endif %}
-        </a>
-        <!-- Account -->
-        <a href="{{ url_for('profile') if session.get('user_id') else url_for('login') }}" class="text-dark" title="Кабінет">
-            <i class="bi bi-person fs-4"></i>
-        </a>
-    </div>
-
-    <h1 class="mb-4">Обране</h1>
+    <h1 class="mb-4 text-center">Ваші улюблені товари</h1>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
           <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
             {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
           </div>
         {% endfor %}
       {% endif %}
     {% endwith %}
 
     {% if favorites %}
-    <div class="row">
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
       {% for flower in favorites %}
-      <div class="col-md-4 mb-4">
-        <div class="card favorite-card h-100">
-            <a href="{{ url_for('product_detail', product_id=flower.id) }}" class="card-link">
-              <img src="{{ url_for('static', filename=flower.image_url.replace('static/', '')) if flower.image_url else 'https://placehold.co/400x200/cccccc/333333?text=No+Image' }}" class="card-img-top" alt="{{ flower.name }}" onerror="this.onerror=null;this.src='https://placehold.co/400x200/cccccc/333333?text=No+Image';">
-            </a>
+      <div class="col">
+        <div class="card favorite-card">
+          <a href="{{ url_for('product_detail', product_id=flower.id) }}">
+            <img src="{{ url_for('static', filename=flower.image_url.split('static/')[-1]) }}" class="card-img-top" alt="{{ flower.name }}">
+          </a>
           <div class="card-body">
-              <a href="{{ url_for('product_detail', product_id=flower.id) }}" class="card-link">
-                  <h5 class="card-title">{{ flower.name }}</h5>
-              </a>
+            <h5 class="card-title">{{ flower.name }}</h5>
             <p class="card-text">{{ flower.description }}</p>
-            <p class="card-text fw-bold">
-                {% if flower.price == flower.price | int %}
-                    {{ flower.price | int }} грн
-                {% else %}
-                    {{ "%.2f"|format(flower.price) }} грн
-                {% endif %}
-            </p>
-            <form method="POST" action="{{ url_for('add_to_cart', flower_id=flower.id) }}" class="mb-2">
-                <div class="input-group">
-                    <input type="number" name="quantity" class="form-control" value="1" min="1" aria-label="Кількість" aria-describedby="add-to-cart-button">
-                    <button class="btn btn-purple" type="submit" id="add-to-cart-button">Придбати</button>
-                </div>
+            <p class="card-text"><strong>{{ "%.2f"|format(flower.price) }} грн</strong></p>
+          </div>
+          <div class="card-footer d-flex justify-content-between align-items-center">
+            <form action="{{ url_for('add_to_cart', flower_id=flower.id) }}" method="post" class="flex-grow-1 me-2">
+                <input type="hidden" name="quantity" value="1">
+                <button type="submit" class="btn btn-purple w-100" {% if flower.stock == 0 %}disabled{% endif %}>
+                    {% if flower.stock == 0 %}Немає в наявності{% else %}<i class="bi bi-cart"></i> Додати в кошик{% endif %}
+                </button>
             </form>
-            <form method="POST" action="{{ url_for('remove_from_favorites', flower_id=flower.id) }}">
+            <form action="{{ url_for('remove_from_favorites', flower_id=flower.id) }}" method="post" class="flex-grow-1">
               <button class="btn btn-outline-danger w-100"><i class="bi bi-heartbreak"></i> Видалити</button>
             </form>
           </div>
