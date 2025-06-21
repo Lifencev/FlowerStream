@@ -1,241 +1,19 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, g, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 import os
 import stripe
+from utils import allowed_file, get_uah_to_eur_rate
 from config import Config
-from dotenv import load_dotenv, find_dotenv
 from werkzeug.utils import secure_filename
 import uuid # Import uuid for generating unique filenames and reset tokens
-
-load_dotenv(find_dotenv())
-
-import requests
-
-def get_uah_to_eur_rate():
-    try:
-        response = requests.get("https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?valcode=EUR&json")
-        data = response.json()
-        rate = float(data[0]['rate'])
-        return rate
-    except Exception as e:
-        print(f"Не вдалося отримати курс НБУ: {e}")
-        return 50.0  # extra price in case of error of getting rate
+from db import get_db_connection
 
 
 app = Flask(__name__)
 app.config.from_object(Config)
 stripe.api_key = app.config['STRIPE_SECRET_KEY']
-DATABASE = os.getenv('DATABASE')
-
-# --- File upload settings ---
-UPLOAD_FOLDER = 'static/images'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-full_upload_path = os.path.join(app.root_path, UPLOAD_FOLDER)
-if not os.path.exists(full_upload_path):
-    try:
-        os.makedirs(full_upload_path)
-        print(f"Upload folder created: {full_upload_path}")
-    except OSError as e:
-        print(f"Error creating upload folder {full_upload_path}: {e}")
-        flash(f"Server error: failed to create upload folder. {e}", "danger")
-
-
-def allowed_file(filename):
-    """
-    Checks if the file extension is allowed.
-    """
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
-def get_db_connection():
-    """
-    Establishes a database connection.
-    Uses Flask's 'g' object to cache the connection throughout the request.
-    """
-    db = getattr(g, '_database', None)
-    if db is None:
-        if DATABASE is None:
-            raise RuntimeError("Environment variable 'DATABASE' is not set. Check your .env file.")
-        db = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row
-    return db
-
-
-@app.teardown_appcontext
-def close_connection(exception):
-    """Closes the database connection after the request is complete."""
-    db = getattr(g, '_database', None)
-    if db is not None:
-        db.close()
-
-
-def init_db():
-    """
-    Initializes the database: creates necessary tables (users, products, cart_items, favorite_items, reviews)
-    and adds initial data (administrator, flowers) if they don't exist.
-    """
-    db = get_db_connection()
-    cursor = db.cursor()
-
-    # Create the users table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user'
-            )
-        ''')
-    db.commit()
-
-    # Create the products table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            description TEXT,
-            price REAL NOT NULL,
-            image_url TEXT
-        )
-    ''')
-
-    # Create the cart_items table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS cart_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            flower_id INTEGER NOT NULL, 
-            quantity INTEGER NOT NULL,
-            UNIQUE(user_id, flower_id), 
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-            FOREIGN KEY (flower_id) REFERENCES products (id) ON DELETE CASCADE
-        )
-    ''')
-
-    # Create the favorite_items table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS favorite_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            flower_id INTEGER NOT NULL, 
-            UNIQUE(user_id, flower_id), 
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-            FOREIGN KEY (flower_id) REFERENCES products (id) ON DELETE CASCADE
-        )
-    ''')
-
-    # New reviews table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS reviews (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            rating INTEGER NOT NULL, -- Rating from 1 to 5
-            comment TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-            CONSTRAINT check_rating CHECK (rating >= 1 AND rating <= 5)
-        )
-    ''')
-
-
-    db.commit()
-
-    # Check if the default administrator exists
-    cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
-    if cursor.fetchone()[0] == 0:
-        hashed_password = generate_password_hash('admin123')
-        cursor.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                       ('admin', hashed_password, 'admin'))
-        db.commit()
-        print("Default administrator added (login: admin, password: admin123)")
-
-    cursor.execute("SELECT COUNT(*) FROM products")
-    if cursor.fetchone()[0] == 0:
-        initial_flowers_data = [
-            {
-                'name': 'Троянда червона',
-                'description': 'Класична червона троянда – символ любові.',
-                'price': 150,
-                'image_url': 'static/images/flower1.jpg'
-            },
-            {
-                'name': 'Тюльпан жовтий',
-                'description': 'Яскравий тюльпан для гарного настрою.',
-                'price': 90,
-                'image_url': 'static/images/flower2.jpg'
-            },
-            {
-                'name': 'Лілія біла',
-                'description': 'Ніжна біла лілія – вишуканий подарунок.',
-                'price': 120,
-                'image_url': 'static/images/flower3.jpg'
-            },
-            {
-                'name': 'Ромашка',
-                'description': 'Світла та ніжна ромашка – символ чистоти.',
-                'price': 80,
-                'image_url': 'static/images/flower4.jpg'
-            },
-            {
-                'name': 'Гвоздика',
-                'description': 'Яскрава гвоздика – чудовий подарунок.',
-                'price': 95,
-                'image_url': 'static/images/flower5.jpeg'
-            },
-            {
-                'name': 'Астра',
-                'description': 'Різнобарвна астра додасть настрою.',
-                'price': 85,
-                'image_url': 'static/images/flower6.jpg'
-            },
-            {
-                'name': 'Незабутка',
-                'description': 'Маленька незабутка – символ пам’яті.',
-                'price': 70,
-                'image_url': 'static/images/flower7.jpg'
-            },
-            {
-                'name': 'Гладіолус',
-                'description': 'Вишуканий гладіолус для особливих моментів.',
-                'price': 110,
-                'image_url': 'static/images/flower8.jpg'
-            },
-            {
-                'name': 'Нарцис',
-                'description': 'Весняний нарцис – передвісник тепла.',
-                'price': 90,
-                'image_url': 'static/images/flower9.jpg'
-            },
-            {
-                'name': 'Крокус',
-                'description': 'Перший весняний крокус – надія і радість.',
-                'price': 75,
-                'image_url': 'static/images/flower10.jpg'
-            },
-            {
-                'name': 'Гербера',
-                'description': 'Яскрава гербера – посмішка в кожен день.',
-                'price': 100,
-                'image_url': 'static/images/flower11.jpg'
-            },
-        ]
-        for flower in initial_flowers_data:
-            cursor.execute("INSERT INTO products (name, description, price, image_url) VALUES (?, ?, ?, ?)",
-                           (flower['name'], flower['description'], flower['price'], flower['image_url']))
-        db.commit()
-        print("Initial flowers added to the database.")
-
-    print("Database initialized.")
-
-with app.app_context():
-    init_db()
 
 
 def load_products_from_db(search_term=None, sort_order=None):
@@ -371,7 +149,6 @@ def home():
     sort_order = request.args.get('sort')  # 'price_asc' or 'price_desc'
     flowers = load_products_from_db(search_query, sort_order) # Pass it to the loading function
 
-    cart = []
     cart_count = 0
     favorites = []
     edit_mode = session.get('edit_mode', False)
