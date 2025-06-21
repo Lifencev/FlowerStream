@@ -1,234 +1,23 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, g, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 import os
 import stripe
+from utils import allowed_file, get_uah_to_eur_rate
+from db import init_db, get_db_connection
 from config import Config
 from dotenv import load_dotenv, find_dotenv
 from werkzeug.utils import secure_filename
 import uuid # Import uuid for generating unique filenames and reset tokens
 
-import requests
-
-def get_uah_to_eur_rate():
-    try:
-        response = requests.get("https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?valcode=EUR&json")
-        data = response.json()
-        rate = float(data[0]['rate'])
-        return rate
-    except Exception as e:
-        print(f"Не вдалося отримати курс НБУ: {e}")
-        return 50.0  # extra price in case of error of getting rate
-
 load_dotenv(find_dotenv())
+
 
 app = Flask(__name__)
 app.config.from_object(Config)
 stripe.api_key = app.config['STRIPE_SECRET_KEY']
-DATABASE = os.getenv('DATABASE')
 
-# --- File upload settings ---
-UPLOAD_FOLDER = 'static/images'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-full_upload_path = os.path.join(app.root_path, UPLOAD_FOLDER)
-if not os.path.exists(full_upload_path):
-    try:
-        os.makedirs(full_upload_path)
-        print(f"Upload folder created: {full_upload_path}")
-    except OSError as e:
-        print(f"Error creating upload folder {full_upload_path}: {e}")
-        flash(f"Server error: failed to create upload folder. {e}", "danger")
-
-
-def allowed_file(filename):
-    """
-    Checks if the file extension is allowed.
-    """
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def get_db_connection():
-    """
-    Establishes a database connection.
-    Uses Flask's 'g' object to cache the connection throughout the request.
-    """
-    db = getattr(g, '_database', None)
-    if db is None:
-        if DATABASE is None:
-            raise RuntimeError("Environment variable 'DATABASE' is not set. Check your .env file.")
-        db = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row
-    return db
-
-@app.teardown_appcontext
-def close_connection(exception):
-    """Closes the database connection after the request is complete."""
-    db = getattr(g, '_database', None)
-    if db is not None:
-        db.close()
-
-def init_db():
-    """
-    Initializes the database: creates necessary tables (users, products, cart_items, favorite_items, reviews)
-    and adds initial data (administrator, flowers) if they don't exist.
-    """
-    db = get_db_connection()
-    cursor = db.cursor()
-    
-    # Create the users table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user'
-            )
-        ''')
-    db.commit()
-
-    # Create the products table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            description TEXT,
-            price REAL NOT NULL,
-            image_url TEXT
-        )
-    ''')
-
-    # Create the cart_items table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS cart_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            flower_id INTEGER NOT NULL, 
-            quantity INTEGER NOT NULL,
-            UNIQUE(user_id, flower_id), 
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-            FOREIGN KEY (flower_id) REFERENCES products (id) ON DELETE CASCADE
-        )
-    ''')
-
-    # Create the favorite_items table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS favorite_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            flower_id INTEGER NOT NULL, 
-            UNIQUE(user_id, flower_id), 
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-            FOREIGN KEY (flower_id) REFERENCES products (id) ON DELETE CASCADE
-        )
-    ''')
-
-    # New reviews table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS reviews (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            rating INTEGER NOT NULL, -- Rating from 1 to 5
-            comment TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-            CONSTRAINT check_rating CHECK (rating >= 1 AND rating <= 5)
-        )
-    ''')
-
-
-    db.commit()
-
-    # Check if the default administrator exists
-    cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
-    if cursor.fetchone()[0] == 0:
-        hashed_password = generate_password_hash('admin123') 
-        cursor.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                       ('admin', hashed_password, 'admin'))
-        db.commit()
-        print("Default administrator added (login: admin, password: admin123)")
-    
-    cursor.execute("SELECT COUNT(*) FROM products")
-    if cursor.fetchone()[0] == 0:
-        initial_flowers_data = [
-            {
-                'name': 'Троянда червона',
-                'description': 'Класична червона троянда – символ любові.',
-                'price': 150,
-                'image_url': 'static/images/flower1.jpg'
-            },
-            {
-                'name': 'Тюльпан жовтий',
-                'description': 'Яскравий тюльпан для гарного настрою.',
-                'price': 90,
-                'image_url': 'static/images/flower2.jpg'
-            },
-            {
-                'name': 'Лілія біла',
-                'description': 'Ніжна біла лілія – вишуканий подарунок.',
-                'price': 120,
-                'image_url': 'static/images/flower3.jpg'
-            },
-            {
-                'name': 'Ромашка',
-                'description': 'Світла та ніжна ромашка – символ чистоти.',
-                'price': 80,
-                'image_url': 'static/images/flower4.jpg'
-            },
-            {
-                'name': 'Гвоздика',
-                'description': 'Яскрава гвоздика – чудовий подарунок.',
-                'price': 95,
-                'image_url': 'static/images/flower5.jpeg'
-            },
-            {
-                'name': 'Астра',
-                'description': 'Різнобарвна астра додасть настрою.',
-                'price': 85,
-                'image_url': 'static/images/flower6.jpg'
-            },
-            {
-                'name': 'Незабутка',
-                'description': 'Маленька незабутка – символ пам’яті.',
-                'price': 70,
-                'image_url': 'static/images/flower7.jpg'
-            },
-            {
-                'name': 'Гладіолус',
-                'description': 'Вишуканий гладіолус для особливих моментів.',
-                'price': 110,
-                'image_url': 'static/images/flower8.jpg'
-            },
-            {
-                'name': 'Нарцис',
-                'description': 'Весняний нарцис – передвісник тепла.',
-                'price': 90,
-                'image_url': 'static/images/flower9.jpg'
-            },
-            {
-                'name': 'Крокус',
-                'description': 'Перший весняний крокус – надія і радість.',
-                'price': 75,
-                'image_url': 'static/images/flower10.jpg'
-            },
-            {
-                'name': 'Гербера',
-                'description': 'Яскрава гербера – посмішка в кожен день.',
-                'price': 100,
-                'image_url': 'static/images/flower11.jpg'
-            },
-        ]
-        for flower in initial_flowers_data:
-            cursor.execute("INSERT INTO products (name, description, price, image_url) VALUES (?, ?, ?, ?)",
-                           (flower['name'], flower['description'], flower['price'], flower['image_url']))
-        db.commit()
-        print("Initial flowers added to the database.")
-    
-    print("Database initialized.")
 
 with app.app_context():
     init_db()
@@ -237,51 +26,124 @@ with app.app_context():
 def load_products_from_db(search_term=None, sort_order=None):
     """
     Loads all products (flowers) from the products table.
-    If search_term is provided, filters products by name or description.
+    Filters products by name or description if search_term is provided (case-insensitive for all characters).
+    Sorts products based on sort_order ('price_asc', 'price_desc', 'newest', 'oldest', 'name_asc', 'name_desc').
+    Default sort is 'name_asc'.
     """
     db = get_db_connection()
     cursor = db.cursor()
 
-    base_query = "SELECT * FROM products"
-    conditions = []
-    params = []
+    # Fetch all products first
+    # Selects all columns including 'stock'
+    cursor.execute("SELECT * FROM products")
+    all_products = cursor.fetchall() # Get all rows as a list of sqlite3.Row objects
 
+    filtered_products = []
     if search_term:
-        conditions.append("(name LIKE ? OR description LIKE ?)")
-        search_pattern = f"%{search_term}%"
-        params.extend([search_pattern, search_pattern])
+        search_term_lower = search_term.lower() # Convert search term to lowercase once
 
-    if conditions:
-        base_query += " WHERE " + " AND ".join(conditions)
+        for product in all_products:
+            # Convert product name and description to lowercase in Python for robust comparison
+            name_lower = product['name'].lower() if product['name'] else ''
+            description_lower = product['description'].lower() if product['description'] else ''
 
-    # Sorting
-    if sort_order == 'price_asc':
-        base_query += " ORDER BY price ASC"
-    elif sort_order == 'price_desc':
-        base_query += " ORDER BY price DESC"
+            if search_term_lower in name_lower or search_term_lower in description_lower:
+                filtered_products.append(product)
+        products_to_sort = filtered_products
     else:
-        base_query += " ORDER BY id ASC"
+        products_to_sort = list(all_products) # Convert to list as all_products is a cursor result
 
-    cursor.execute(base_query, params)
-    return cursor.fetchall()
+    # Apply sorting logic in Python
+    if sort_order == 'price_asc':
+        products_to_sort.sort(key=lambda p: p['price'])
+    elif sort_order == 'price_desc':
+        products_to_sort.sort(key=lambda p: p['price'], reverse=True)
+    elif sort_order == 'newest': # Sort by newest (highest ID first)
+        products_to_sort.sort(key=lambda p: p['id'], reverse=True)
+    elif sort_order == 'oldest': # Sort by oldest (lowest ID first)
+        products_to_sort.sort(key=lambda p: p['id'])
+    elif sort_order == 'name_asc': # Sort by name A-Z
+        products_to_sort.sort(key=lambda p: p['name'].lower())
+    elif sort_order == 'name_desc': # Sort by name Z-A
+        products_to_sort.sort(key=lambda p: p['name'].lower(), reverse=True)
+    else:
+        # Default sort to 'name_asc' if no specific sort_order is provided or recognized
+        products_to_sort.sort(key=lambda p: p['name'].lower())
 
-def get_flower_by_id(flower_id):
-    """Returns a flower object by ID from the DB."""
-    db = get_db_connection()
-    cursor = db.execute("SELECT * FROM products WHERE id = ?", (flower_id,))
-    return cursor.fetchone()
+    return products_to_sort
+
+
+@app.route('/get_flower_data/<int:flower_id>', methods=['GET'])
+def get_flower_data(flower_id):
+    """
+    Returns data for a single flower as JSON.
+    Used by AJAX to populate the edit modal.
+    """
+    flower = get_flower_by_id(flower_id)
+    if flower:
+        # Convert sqlite3.Row object to a dictionary for JSON serialization
+        flower_dict = dict(flower)
+        # Ensure image_url is a full path if it's relative
+        if flower_dict.get('image_url') and not flower_dict['image_url'].startswith(('http://', 'https://', '/static')):
+            # Ensure the correct base path for static files.
+            # Assuming flower_dict['image_url'] is like 'static/images/flower.jpg'
+            # We want it to be '/static/images/flower.jpg' for correct URL generation.
+            if flower_dict['image_url'].startswith('static/'):
+                 flower_dict['image_url'] = '/' + flower_dict['image_url']
+            else:
+                 # Fallback for other unexpected relative paths, prepend /static/images/ if it's just a filename
+                 flower_dict['image_url'] = f'/static/images/{flower_dict["image_url"]}'
+
+        return jsonify(flower_dict)
+    return jsonify({'error': 'Flower not found'}), 404
+
 
 def get_reviews_for_product(product_id):
-    """Returns all reviews for a specific product."""
+    """
+    Returns all reviews for a specific product, ordered by creation date (newest first).
+    Converts timestamps from UTC (as stored by SQLite) to Kyiv time (UTC+3).
+    """
     db = get_db_connection()
     cursor = db.execute("""
-        SELECT r.id, r.rating, r.comment, r.created_at, u.username
+        SELECT r.id, r.rating, r.comment, r.created_at, u.username, r.user_id
         FROM reviews r
         JOIN users u ON r.user_id = u.id
         WHERE r.product_id = ?
         ORDER BY r.created_at DESC
     """, (product_id,))
-    return cursor.fetchall()
+
+    reviews_data = []
+    kyiv_offset = datetime.timedelta(hours=3) # Kyiv time is UTC+3 (EEST/EET without considering DST specifics)
+
+    for row in cursor.fetchall():
+        # Parse UTC time string from DB
+        try:
+            utc_dt = datetime.datetime.strptime(row['created_at'], "%Y-%m-%d %H:%M:%S")
+            # Convert to Kyiv time by adding the offset
+            kyiv_dt = utc_dt + kyiv_offset
+            formatted_time = kyiv_dt.strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            # Fallback if timestamp format is unexpected
+            formatted_time = row['created_at']
+
+        item = {
+            'id': row['id'],
+            'rating': row['rating'],
+            'comment': row['comment'],
+            'created_at': formatted_time, # Now in Kyiv time
+            'username': row['username'],
+            'user_id': row['user_id'] # Include user_id for deletion logic in template
+        }
+        reviews_data.append(item)
+    return reviews_data
+
+
+def get_flower_by_id(flower_id):
+    """Returns a flower object by ID from the database."""
+    db = get_db_connection()
+    # Selects all columns including 'stock'
+    cursor = db.execute("SELECT * FROM products WHERE id = ?", (flower_id,))
+    return cursor.fetchone()
 
 
 def get_average_rating_for_product(product_id):
@@ -293,10 +155,12 @@ def get_average_rating_for_product(product_id):
 
 
 def load_user_cart_from_db(user_id):
-    """Loads user's cart from DB and returns it in session format."""
+    """Loads user's cart items from the database."""
     db = get_db_connection()
+    # Ensure 'stock' is also fetched for cart items if needed for display later or validation.
+    # For now, it's implicitly included by SELECT p.*
     cursor = db.execute("""
-        SELECT ci.quantity, p.id, p.name, p.description, p.price, p.image_url
+        SELECT ci.quantity, p.id, p.name, p.description, p.price, p.image_url, p.stock
         FROM cart_items ci
         JOIN products p ON ci.flower_id = p.id
         WHERE ci.user_id = ?
@@ -309,26 +173,27 @@ def load_user_cart_from_db(user_id):
             'description': row['description'],
             'price': row['price'],
             'image_url': row['image_url'],
-            'quantity': row['quantity']
+            'quantity': row['quantity'],
+            'stock': row['stock'] # Include stock in cart item data
         }
         cart_data.append(item)
     return cart_data
 
 def save_user_cart_to_db(user_id, cart_data):
-    """Saves user's cart from session to DB."""
+    """Saves user's cart items from the session to the database."""
     db = get_db_connection()
     cursor = db.cursor()
-    cursor.execute("DELETE FROM cart_items WHERE user_id = ?", (user_id,))
+    cursor.execute("DELETE FROM cart_items WHERE user_id = ?", (user_id,)) # Clear existing cart
     for item in cart_data:
         cursor.execute("INSERT INTO cart_items (user_id, flower_id, quantity) VALUES (?, ?, ?)",
                        (user_id, item['id'], item['quantity']))
     db.commit()
 
 def load_user_favorites_from_db(user_id):
-    """Loads user's favorites from DB and returns it in session format."""
+    """Loads user's favorite items from the database."""
     db = get_db_connection()
     cursor = db.execute("""
-        SELECT p.id, p.name, p.description, p.price, p.image_url
+        SELECT p.id, p.name, p.description, p.price, p.image_url, p.stock
         FROM favorite_items fi
         JOIN products p ON fi.flower_id = p.id
         WHERE fi.user_id = ?
@@ -341,15 +206,16 @@ def load_user_favorites_from_db(user_id):
             'description': row['description'],
             'price': row['price'],
             'image_url': row['image_url'],
+            'stock': row['stock'] # Include stock in favorite item data
         }
         favorites_data.append(item)
     return favorites_data
 
 def save_user_favorites_to_db(user_id, favorites_data):
-    """Saves user's favorites from session to DB."""
+    """Saves user's favorite items from the session to the database."""
     db = get_db_connection()
     cursor = db.cursor()
-    cursor.execute("DELETE FROM favorite_items WHERE user_id = ?", (user_id,))
+    cursor.execute("DELETE FROM favorite_items WHERE user_id = ?", (user_id,)) # Clear existing favorites
     for item in favorites_data:
         cursor.execute("INSERT INTO favorite_items (user_id, flower_id) VALUES (?, ?)",
                        (user_id, item['id']))
@@ -358,12 +224,17 @@ def save_user_favorites_to_db(user_id, favorites_data):
 
 @app.route('/')
 def home():
+    """
+    Handles the home page, displaying products with search and sort functionality.
+    Manages user session, cart, and favorites data for display.
+    """
     is_admin = session.get('is_admin', False)
     user_logged_in = session.get('user_id') is not None
 
-    search_query = request.args.get('search_query') # Get search query
-    sort_order = request.args.get('sort')  # 'price_asc' or 'price_desc'
-    flowers = load_products_from_db(search_query, sort_order) # Pass it to the loading function
+    search_query = request.args.get('search_query') # Get search query from URL parameters
+    # Set default sort_order to 'name_asc' if not provided in the URL
+    sort_order = request.args.get('sort', 'name_asc')  # Default to 'name_asc'
+    flowers = load_products_from_db(search_query, sort_order) # Load products based on search and sort
 
     cart = []
     cart_count = 0
@@ -371,10 +242,12 @@ def home():
     edit_mode = session.get('edit_mode', False)
 
     if user_logged_in:
+        # Load cart and favorites from session (which are kept in sync with DB)
         cart = session.get('cart', [])
         cart_count = sum(item['quantity'] for item in cart) if cart else 0
         favorites = session.get('favorites', [])
     else:
+        # Clear session-related data if user is not logged in
         session.pop('cart', None)
         session.pop('favorites', None)
         session.pop('edit_mode', None)
@@ -382,11 +255,14 @@ def home():
     return render_template('home.html', flowers=flowers, is_admin=is_admin,
                            cart_count=cart_count, favorites=favorites,
                            user_logged_in=user_logged_in, edit_mode=edit_mode,
-                           search_query=search_query) # Pass search_query to template
+                           search_query=search_query, sort_order=sort_order) # Pass search_query and sort_order to template
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """Route for user login."""
+    """
+    Handles user login. Authenticates user and sets session variables.
+    Loads user's cart and favorites from DB into session upon successful login.
+    """
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
@@ -397,34 +273,37 @@ def login():
         if user and check_password_hash(user['password_hash'], password):
             session['user_id'] = user['id']
             session['username'] = user['username']
-            session['is_admin'] = (user['role'] == 'admin') 
-            
+            session['is_admin'] = (user['role'] == 'admin')
+
             # Load cart and favorites from DB into session after login
             session['cart'] = load_user_cart_from_db(user['id'])
             session['favorites'] = load_user_favorites_from_db(user['id'])
-            
-            session['edit_mode'] = False # Disable edit mode on login
+
+            session['edit_mode'] = False # Disable edit mode on login by default
 
             flash('Успішний вхід!', 'success')
             return redirect(url_for('home'))
         else:
             flash('Невірні логін або пароль.', 'danger')
-    
-    return render_template('admin_login.html') 
+
+    return render_template('admin_login.html') # Using admin_login.html for general login
 
 @app.route('/logout')
 def logout():
-    """Route for user logout."""
+    """
+    Handles user logout. Saves user's cart and favorites from session to DB,
+    then clears all relevant session variables.
+    """
     user_id = session.get('user_id')
     if user_id:
         # Save cart and favorites from session to DB before logout
         save_user_cart_to_db(user_id, session.get('cart', []))
         save_user_favorites_to_db(user_id, session.get('favorites', []))
 
-    # Clear session
+    # Clear session variables
     session.pop('user_id', None)
     session.pop('username', None)
-    session.pop('is_admin', None) 
+    session.pop('is_admin', None)
     session.pop('cart', None)       # Clear cart from session
     session.pop('favorites', None)  # Clear favorites from session
     session.pop('edit_mode', None)  # Disable edit mode
@@ -433,12 +312,15 @@ def logout():
 
 @app.route('/toggle_edit_mode', methods=['POST'])
 def toggle_edit_mode():
-    """Toggles edit mode for administrators."""
+    """
+    Toggles edit mode for administrators.
+    Only accessible by logged-in administrators.
+    """
     if not session.get('is_admin'):
         flash('Доступ заборонено. Тільки адміністратори можуть перемикати режим редагування.', 'danger')
         return redirect(url_for('login'))
-    
-    session['edit_mode'] = not session.get('edit_mode', False) # Toggle value
+
+    session['edit_mode'] = not session.get('edit_mode', False) # Toggle the edit_mode boolean
     flash(f"Режим редагування: {'увімкнено' if session['edit_mode'] else 'вимкнено'}.", 'info')
     return redirect(url_for('home'))
 
@@ -446,17 +328,26 @@ def toggle_edit_mode():
 @app.route('/edit_flower/<int:flower_id>', methods=['POST'])
 def edit_flower(flower_id):
     """
-    Edits an existing product. Added ability to upload new image
-    and delete old image.
+    Edits an existing product in the database.
+    Allows updating name, description, price, image, and stock.
+    Handles deletion of old images if a new one is uploaded (except initial default images).
+    Requires administrator privileges and edit mode to be active.
     """
     if not session.get('is_admin') or not session.get('edit_mode'):
         flash('Доступ заборонено. Увімкніть режим редагування, щоб редагувати квіти.', 'danger')
-        return redirect(url_for('home')) 
+        return redirect(url_for('home'))
 
     name = request.form['name']
     description = request.form['description']
     price = float(request.form['price'])
+    stock = int(request.form['stock']) # Get stock from form
     image_file = request.files.get('image')
+
+    # Basic validation for stock
+    if stock < 0:
+        flash("Кількість товару в наявності не може бути від'ємною.", "danger")
+        return redirect(url_for('home'))
+
 
     db = get_db_connection()
     cursor = db.cursor()
@@ -471,25 +362,25 @@ def edit_flower(flower_id):
             try:
                 original_filename = secure_filename(image_file.filename)
                 file_ext = original_filename.rsplit('.', 1)[1].lower()
-                unique_filename = f"{uuid.uuid4().hex}.{file_ext}"
-                
+                unique_filename = f"{uuid.uuid4().hex}.{file_ext}" # Generate unique filename
+
                 file_path = os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], unique_filename)
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                os.makedirs(os.path.dirname(file_path), exist_ok=True) # Ensure directory exists
                 image_file.save(file_path)
-                
+
                 new_image_url = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename).replace("\\", "/")
                 flash(f"Нове зображення '{original_filename}' успішно завантажено.", "success")
                 print(f"New image saved: {file_path}. URL for DB: {new_image_url}")
 
-                # Delete the old image if it existed and is not one of the initial ones
-                if old_image_url and "static/images/flower" not in old_image_url: # Skip initial images
+                # Delete the old image if it existed and is not one of the initial default images
+                if old_image_url and "static/images/flower" not in old_image_url:
                     old_file_path = os.path.join(app.root_path, old_image_url)
                     if os.path.exists(old_file_path):
                         try:
                             os.remove(old_file_path)
                             print(f"Old image deleted: {old_file_path}")
                         except OSError as e:
-                            print(f"Error deleting old image {old_file_path}: {e}")
+                            print(f"Error deleting old image {file_path}: {e}")
                             flash(f"Помилка при видаленні старого зображення: {e}", "warning")
             except Exception as e:
                 flash(f"Помилка при завантаженні нового зображення: {e}", "danger")
@@ -498,10 +389,11 @@ def edit_flower(flower_id):
         else:
             flash("Недопустимий формат файлу зображення для оновлення.", "danger")
             return redirect(url_for('home'))
-    
+
     try:
-        cursor.execute("UPDATE products SET name = ?, description = ?, price = ?, image_url = ? WHERE id = ?",
-                       (name, description, price, new_image_url, flower_id))
+        # Update query to include stock
+        cursor.execute("UPDATE products SET name = ?, description = ?, price = ?, image_url = ?, stock = ? WHERE id = ?",
+                       (name, description, price, new_image_url, stock, flower_id))
         db.commit()
         flash(f"Товар \"{name}\" оновлено.", "success")
     except Exception as e:
@@ -515,8 +407,8 @@ def edit_flower(flower_id):
 @app.route('/delete_flower/<int:flower_id>', methods=['POST'])
 def delete_flower(flower_id):
     """
-    Deletes a product from the database and its associated image.
-    Only for administrators in edit mode.
+    Deletes a product from the database and its associated image file.
+    Requires administrator privileges and edit mode to be active.
     """
     if not session.get('is_admin') or not session.get('edit_mode'):
         flash('Доступ заборонено. Увімкніть режим редагування, щоб видаляти квіти.', 'danger')
@@ -531,13 +423,12 @@ def delete_flower(flower_id):
         return redirect(url_for('home'))
 
     try:
-        # Delete product from cart_items and favorite_items tables (via CASCADE)
-        # and from the products table
+        # Deleting the product will automatically delete related cart_items and favorite_items due to CASCADE
         cursor.execute("DELETE FROM products WHERE id = ?", (flower_id,))
         db.commit()
 
-        # Delete image if it exists and is not one of the initial ones
-        if flower['image_url'] and "static/images/flower" not in flower['image_url']: # Skip initial images
+        # Delete image file if it exists and is not one of the initial default images
+        if flower['image_url'] and "static/images/flower" not in flower['image_url']:
             file_path = os.path.join(app.root_path, flower['image_url'])
             if os.path.exists(file_path):
                 try:
@@ -546,7 +437,7 @@ def delete_flower(flower_id):
                 except OSError as e:
                     print(f"Error deleting image {file_path}: {e}")
                     flash(f"Помилка при видаленні зображення товару: {e}", "warning")
-        
+
         flash(f"Товар \"{flower['name']}\" успішно видалено.", "success")
     except Exception as e:
         flash(f"Помилка при видаленні товару: {e}", "danger")
@@ -560,7 +451,8 @@ def delete_flower(flower_id):
 def add_flower():
     """
     Adds a new product (flower) to the database.
-    Only for administrators in edit mode.
+    Allows uploading an image for the new product and setting initial stock.
+    Requires administrator privileges and edit mode to be active.
     """
     if not session.get('is_admin') or not session.get('edit_mode'):
         flash('Доступ заборонено. Увімкніть режим редагування, щоб додавати квіти.', 'danger')
@@ -569,16 +461,21 @@ def add_flower():
     name = request.form.get('name')
     description = request.form.get('description')
     price = request.form.get('price')
+    stock = request.form.get('stock') # Get stock from form
     image_file = request.files.get('image')
 
-    if not all([name, price]):
-        flash("Будь ласка, заповніть назву та ціну товару.", "danger")
+    if not all([name, price, stock]): # Ensure stock is also provided
+        flash("Будь ласка, заповніть усі поля: назву, ціну та кількість в наявності.", "danger")
         return redirect(url_for('home'))
 
     try:
         price = float(price)
+        stock = int(stock)
+        if stock < 0:
+            flash("Кількість товару в наявності не може бути від'ємною.", "danger")
+            return redirect(url_for('home'))
     except ValueError:
-        flash("Ціна повинна бути числом.", "danger")
+        flash("Ціна повинна бути числом, а кількість в наявності - цілим числом.", "danger")
         return redirect(url_for('home'))
 
     image_url = None
@@ -588,22 +485,22 @@ def add_flower():
                 original_filename = secure_filename(image_file.filename)
                 file_ext = original_filename.rsplit('.', 1)[1].lower()
                 unique_filename = f"{uuid.uuid4().hex}.{file_ext}" # Use UUID for uniqueness
-                
+
                 # Full path to save the file
                 file_path = os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], unique_filename)
-                
+
                 # Check and create directory if it doesn't exist
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
                 image_file.save(file_path)
-                
+
                 # Save relative URL for use in Flask templates
                 image_url = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename).replace("\\", "/")
                 flash(f"Нове зображення '{original_filename}' успішно завантажено.", "success")
-                print(f"New image saved: {file_path}. URL for DB: {image_url}") # Debugging print
+                print(f"New image saved: {file_path}. URL for DB: {image_url}")
             except Exception as e:
                 flash(f"Помилка при збереженні зображення: {e}", "danger")
-                print(f"Image save error: {e}") # Debugging print
+                print(f"Image save error: {e}")
                 return redirect(url_for('home'))
         else:
             flash("Недопустимий формат файлу зображення.", "danger")
@@ -616,33 +513,39 @@ def add_flower():
     db = get_db_connection()
     cursor = db.cursor()
     try:
-        cursor.execute("INSERT INTO products (name, description, price, image_url) VALUES (?, ?, ?, ?)",
-                       (name, description, price, image_url))
+        # Insert query now includes stock
+        cursor.execute("INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+                       (name, description, price, image_url, stock))
         db.commit()
         flash(f"Товар \"{name}\" успішно додано.", "success")
-        print(f"Product '{name}' added to DB with URL: {image_url}") # Debugging print
+        print(f"Product '{name}' added to DB with URL: {image_url}, Stock: {stock}")
     except Exception as e:
         flash(f"Помилка при додаванні товару до бази даних: {e}", "danger")
-        print(f"DB error adding product: {e}") # Debugging print
+        print(f"DB error adding product: {e}")
         db.rollback()
-    
+
     return redirect(url_for('home'))
 
 
 @app.route('/add_to_cart/<int:flower_id>', methods=['POST'])
 def add_to_cart(flower_id):
-    """Adds an item to the user's cart."""
+    """
+    Adds a specified quantity of an item to the user's cart.
+    If the item already exists, increases its quantity.
+    Does NOT check stock at this stage, as per user request.
+    Requires user to be logged in.
+    """
     user_id = session.get('user_id')
     if not user_id:
         flash('Будь ласка, увійдіть, щоб додати товари до кошика.', 'info')
         return redirect(url_for('login'))
 
-    flower = get_flower_by_id(flower_id) 
+    flower = get_flower_by_id(flower_id)
     if not flower:
         flash('Квітка не знайдена.', 'danger')
         return redirect(url_for('home'))
 
-    # Get quantity from form. Default to 1 if not specified or invalid value.
+    # Get quantity from form. Default to 1 if not specified or invalid.
     try:
         quantity = int(request.form.get('quantity', 1))
         if quantity < 1:
@@ -652,7 +555,8 @@ def add_to_cart(flower_id):
 
     db = get_db_connection()
     cursor = db.cursor()
-    
+
+    # Check if the item already exists in the cart for this user
     cursor.execute("SELECT quantity FROM cart_items WHERE user_id = ? AND flower_id = ?", (user_id, flower_id))
     existing_item_db = cursor.fetchone()
 
@@ -667,13 +571,59 @@ def add_to_cart(flower_id):
         flash(f"{flower['name']} (x{quantity}) додано до кошика.", "success")
     db.commit()
 
-    # Update cart in session from DB
+    # Update cart in session by re-loading from DB to ensure consistency
     session['cart'] = load_user_cart_from_db(user_id)
     return redirect(url_for('home'))
 
+@app.route('/update_cart_item_quantity/<int:flower_id>', methods=['POST'])
+def update_cart_item_quantity(flower_id):
+    """
+    Updates the quantity of a specific item in the user's cart.
+    If quantity is 0 or less, the item is removed.
+    Requires user to be logged in.
+    """
+    user_id = session.get('user_id')
+    if not user_id:
+        flash('Будь ласка, увійдіть, щоб оновити кошик.', 'info')
+        return redirect(url_for('login'))
+
+    try:
+        new_quantity = int(request.form.get('quantity', 1))
+    except ValueError:
+        flash('Недійсна кількість.', 'danger')
+        return redirect(url_for('view_cart'))
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    if new_quantity <= 0:
+        cursor.execute("DELETE FROM cart_items WHERE user_id = ? AND flower_id = ?",
+                       (user_id, flower_id))
+        flash(f"Товар видалено з кошика.", "info")
+    else:
+        cursor.execute("SELECT * FROM cart_items WHERE user_id = ? AND flower_id = ?", (user_id, flower_id))
+        existing_item = cursor.fetchone()
+        if existing_item:
+            cursor.execute("UPDATE cart_items SET quantity = ? WHERE user_id = ? AND flower_id = ?",
+                           (new_quantity, user_id, flower_id))
+            flash(f"Кількість товару оновлено до {new_quantity}.", "success")
+        else:
+            flash("Товар не знайдено в кошику для оновлення.", "danger")
+            # If item doesn't exist, we can optionally add it or just redirect
+            # For this context, we assume it's an update for existing item.
+    db.commit()
+
+    # Update cart in session by re-loading from DB to ensure consistency
+    session['cart'] = load_user_cart_from_db(user_id)
+    return redirect(url_for('view_cart'))
+
+
 @app.route('/remove_from_cart/<int:index>', methods=['POST'])
 def remove_from_cart(index):
-    """Removes an item from the cart by index."""
+    """
+    Removes an item from the user's cart based on its index in the session cart list.
+    Requires user to be logged in.
+    """
     user_id = session.get('user_id')
     if not user_id:
         flash('Будь ласка, увійдіть.', 'info')
@@ -681,73 +631,29 @@ def remove_from_cart(index):
 
     cart = session.get('cart', [])
     if 0 <= index < len(cart):
-        removed_item = cart[index] 
-        
+        removed_item = cart[index]
+
         db = get_db_connection()
         cursor = db.cursor()
         cursor.execute("DELETE FROM cart_items WHERE user_id = ? AND flower_id = ?",
                        (user_id, removed_item['id']))
         db.commit()
 
-        # Update cart in session from DB
+        # Update cart in session by re-loading from DB to ensure consistency
         session['cart'] = load_user_cart_from_db(user_id)
         flash(f"{removed_item['name']} видалено з кошика.", "info")
     else:
         flash("Товар не знайдено в кошику.", "danger")
     return redirect(url_for('view_cart'))
 
-@app.route('/increase_quantity/<int:index>', methods=['POST'])
-def increase_quantity(index):
-    """Increases the quantity of an item in the cart by index."""
-    user_id = session.get('user_id')
-    if not user_id:
-        flash('Будь ласка, увійдіть.', 'info')
-        return redirect(url_for('login'))
-
-    cart = session.get('cart', [])
-    if 0 <= index < len(cart):
-        item_to_update = cart[index]
-        db = get_db_connection()
-        cursor = db.cursor()
-        
-        cursor.execute("UPDATE cart_items SET quantity = quantity + 1 WHERE user_id = ? AND flower_id = ?",
-                       (user_id, item_to_update['id']))
-        db.commit()
-        
-        # Update cart in session from DB
-        session['cart'] = load_user_cart_from_db(user_id)
-    return redirect(url_for('view_cart'))
-
-@app.route('/decrease_quantity/<int:index>', methods=['POST'])
-def decrease_quantity(index):
-    """Decreases the quantity of an item in the cart by index."""
-    user_id = session.get('user_id')
-    if not user_id:
-        flash('Будь ласка, увійдіть.', 'info')
-        return redirect(url_for('login'))
-
-    cart = session.get('cart', [])
-    if 0 <= index < len(cart):
-        item_to_update = cart[index]
-        db = get_db_connection()
-        cursor = db.cursor()
-
-        cursor.execute("SELECT quantity FROM cart_items WHERE user_id = ? AND flower_id = ?", 
-                       (user_id, item_to_update['id']))
-        current_quantity = cursor.fetchone()['quantity']
-
-        if current_quantity > 1:
-            cursor.execute("UPDATE cart_items SET quantity = quantity - 1 WHERE user_id = ? AND flower_id = ?",
-                           (user_id, item_to_update['id']))
-            db.commit()
-        
-        # Update cart in session from DB
-        session['cart'] = load_user_cart_from_db(user_id)
-    return redirect(url_for('view_cart'))
 
 @app.route('/cart')
 def view_cart():
-    """Visualise items in user's cart"""
+    """
+    Displays the user's shopping cart, calculating total price
+    and approximate total in EUR using the current exchange rate.
+    Requires user to be logged in.
+    """
     if not session.get('user_id'):
         flash('Будь ласка, увійдіть, щоб переглянути ваш кошик.', 'info')
         return redirect(url_for('login'))
@@ -773,7 +679,11 @@ def view_cart():
 
 @app.route('/checkout', methods=['GET', 'POST'])
 def checkout():
-    """Route for placing an order."""
+    """
+    Displays the checkout page.
+    Passes Stripe publishable key to the template for client-side integration.
+    Requires user to be logged in.
+    """
     user_id = session.get('user_id')
     if not user_id:
         flash('Будь ласка, увійдіть, щоб оформити замовлення.', 'info')
@@ -785,13 +695,19 @@ def checkout():
     favorites = session.get('favorites', []) if user_logged_in else []
 
     return render_template('checkout.html',
-                           publishable_key=app.config['STRIPE_PUBLISHABLE_KEY'],
+                           stripe_public_key=app.config['STRIPE_PUBLISHABLE_KEY'],
                            cart_count=cart_count, favorites=favorites,
                            user_logged_in=user_logged_in)
 
 
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
+    """
+    Creates a Stripe Checkout Session for payment processing.
+    Calculates prices in EUR based on the current exchange rate.
+    Performs stock validation before proceeding.
+    Requires user to be logged in and cart not to be empty.
+    """
     user_id = session.get('user_id')
     if not user_id:
         flash('Будь ласка, увійдіть, щоб оформити замовлення.', 'info')
@@ -802,7 +718,32 @@ def create_checkout_session():
         flash('Ваш кошик порожній.', 'info')
         return redirect(url_for('view_cart'))
 
+    db = get_db_connection()
+
+    # --- Stock Validation ---
+    for item in cart:
+        flower = get_flower_by_id(item['id'])
+        if not flower:
+            flash(f"Товар '{item['name']}' не знайдено.", "danger")
+            return redirect(url_for('view_cart'))
+
+        if item['quantity'] > flower['stock']:
+            flash(f"На жаль, товару '{item['name']}' є лише {flower['stock']} одиниць в наявності. Оновіть кількість у кошику.", "warning")
+            return redirect(url_for('view_cart'))
+    # --- End Stock Validation ---
+
     exchange_rate = get_uah_to_eur_rate()
+    data = request.get_json()
+    recipient_name = data.get('recipient_name')
+    delivery_address = data.get('delivery_address')
+    phone_number = data.get('phone_number')
+
+    # Validation
+    allowed_chars = set("0123456789+")
+    if not all(char in allowed_chars for char in phone_number):
+        return jsonify({'error': 'Телефон має містити лише цифри та символ +.'}), 400
+    if not recipient_name or not delivery_address or not phone_number:
+        return jsonify({'error': 'Будь ласка, заповніть усі поля доставки.'}), 400
     line_items = []
 
     for item in cart:
@@ -812,43 +753,96 @@ def create_checkout_session():
             'price_data': {
                 'currency': 'eur',
                 'product_data': {'name': item['name']},
-                'unit_amount': int(price_eur * 100),  # rate uah to eur
+                'unit_amount': int(price_eur * 100),  # Convert to cents
             },
             'quantity': item['quantity'],
         })
 
-    checkout_session = stripe.checkout.Session.create(
-        payment_method_types=['card'],
-        line_items=line_items,
-        mode='payment',
-        success_url=url_for('checkout_success', _external=True) + '?session_id={CHECKOUT_SESSION_ID}',
-        cancel_url=url_for('checkout_cancel', _external=True),
-    )
-
-    return jsonify({'sessionId': checkout_session.id})
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=line_items,
+            mode='payment',
+            success_url=url_for('checkout_success', _external=True) + '?session_id={CHECKOUT_SESSION_ID}',
+            cancel_url=url_for('checkout_cancel', _external=True),
+        )
+        return jsonify({'sessionId': checkout_session.id})
+    except stripe.error.StripeError as e:
+        flash(f"Помилка при створенні сесії оплати: {e}", "danger")
+        return jsonify({'error': str(e)}), 400
 
 
 @app.route('/checkout/success')
 def checkout_success():
-    """Stripe payment success route."""
+    """
+    Handles successful Stripe payment. Clears the user's cart in the database and session.
+    Also, *decreases product stock* by ordered quantities and creates an order record.
+    """
     user_id = session.get('user_id')
     db = get_db_connection()
-    db.execute("DELETE FROM cart_items WHERE user_id = ?", (user_id,))
-    db.commit()
-    session.pop('cart', None)
-    flash("Оплата успішна! Дякуємо за замовлення.", "success")
-    return redirect(url_for('home'))
+    cursor = db.cursor()
+
+    cart = session.get('cart', [])
+    total_amount = sum(item['price'] * item['quantity'] for item in cart)
+
+    try:
+        # 1. Create a new order
+        cursor.execute(
+            "INSERT INTO orders (user_id, total_amount, status) VALUES (?, ?, ?)",
+            (user_id, total_amount, 'Очікується')
+        )
+        order_id = cursor.lastrowid # Get the ID of the newly created order
+
+        # 2. Add items to order_items and decrease product stock
+        for item in cart:
+            flower_id = item['id']
+            ordered_quantity = item['quantity']
+            price_at_purchase = item['price'] # Record price at the time of purchase
+
+            cursor.execute(
+                "INSERT INTO order_items (order_id, flower_id, quantity, price_at_purchase) VALUES (?, ?, ?, ?)",
+                (order_id, flower_id, ordered_quantity, price_at_purchase)
+            )
+
+            # Decrease stock for the product
+            current_flower = get_flower_by_id(flower_id)
+            if current_flower:
+                new_stock = current_flower['stock'] - ordered_quantity
+                if new_stock < 0: # Should not happen due to prior validation, but as a safeguard
+                    new_stock = 0
+                cursor.execute("UPDATE products SET stock = ? WHERE id = ?", (new_stock, flower_id))
+                print(f"Product {flower_id} stock updated from {current_flower['stock']} to {new_stock}")
+            else:
+                print(f"Warning: Product {flower_id} not found when trying to update stock.")
+
+        # 3. Clear user's cart after successful payment and order creation
+        cursor.execute("DELETE FROM cart_items WHERE user_id = ?", (user_id,))
+        db.commit()
+        session.pop('cart', None) # Clear cart from session
+
+        flash("Оплата успішна! Дякуємо за замовлення. Ваше замовлення очікує підтвердження.", "success")
+        return redirect(url_for('orders_history')) # Redirect to order history
+
+    except Exception as e:
+        db.rollback() # Rollback any changes if an error occurs
+        flash(f"Помилка при обробці замовлення: {e}", "danger")
+        print(f"Error processing order after Stripe success: {e}")
+        return redirect(url_for('view_cart'))
+
 
 @app.route('/checkout/cancel')
 def checkout_cancel():
-    """Stripe payment cancellation route."""
+    """Handles Stripe payment cancellation."""
     flash("Оплата скасована, ви повернулися до кошика.", "warning")
     return redirect(url_for('view_cart'))
 
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    """Route for new user registration."""
+    """
+    Handles new user registration.
+    Performs validation for password match and username uniqueness.
+    """
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
@@ -858,27 +852,32 @@ def register():
             flash("Будь ласка, заповніть усі поля.", "danger")
         elif password != confirm:
             flash("Паролі не збігаються.", "danger")
+        elif len(password) < 6: # Basic password length validation
+            flash("Пароль має бути не менше 6 символів.", "danger")
         else:
             db = get_db_connection()
             try:
                 hashed_password = generate_password_hash(password)
                 cursor = db.cursor()
                 cursor.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                               (username, hashed_password, 'user')) 
+                               (username, hashed_password, 'user'))
                 db.commit()
-                flash("Реєстрація успішна! Тепер увійдіть.", "success") 
+                flash("Реєстрація успішна! Тепер увійдіть.", "success")
                 return redirect(url_for('login'))
             except sqlite3.IntegrityError: # Handle error if user already exists
                 flash("Користувач з таким ім'ям вже існує.", "danger")
             except Exception as e:
                 flash(f"Помилка реєстрації: {e}", "danger")
-                db.rollback() 
+                db.rollback()
 
     return render_template('register.html')
 
 @app.route('/favorites')
 def view_favorites():
-    """Route for viewing favorite items."""
+    """
+    Displays the user's favorite items.
+    Requires user to be logged in.
+    """
     if not session.get('user_id'):
         flash('Будь ласка, увійдіть, щоб переглянути ваші улюблені товари.', 'info')
         return redirect(url_for('login'))
@@ -888,21 +887,24 @@ def view_favorites():
     # Pass cart_count and favorites for display in the top bar
     user_logged_in = session.get('user_id') is not None
     cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
-    # The 'favorites' variable is already defined and passed correctly. Remove duplicate.
 
     return render_template('favorites.html', favorites=favorites,
-                           cart_count=cart_count, # Removed duplicate 'favorites=favorites' here
+                           cart_count=cart_count,
                            user_logged_in=user_logged_in)
 
 @app.route('/add_to_favorites/<int:flower_id>', methods=['POST'])
 def add_to_favorites(flower_id):
-    """Adds an item to the favorites list."""
+    """
+    Adds an item to the user's favorites list.
+    Prevents adding duplicates.
+    Requires user to be logged in.
+    """
     user_id = session.get('user_id')
     if not user_id:
         flash('Будь ласка, увійдіть, щоб додати товари до обраного.', 'info')
         return redirect(url_for('login'))
 
-    flower = get_flower_by_id(flower_id) 
+    flower = get_flower_by_id(flower_id)
     if not flower:
         flash('Квітка не знайдена.', 'danger')
         return redirect(url_for('home'))
@@ -914,21 +916,24 @@ def add_to_favorites(flower_id):
         cursor.execute("INSERT INTO favorite_items (user_id, flower_id) VALUES (?, ?)",
                        (user_id, flower_id))
         db.commit()
-        # Update favorites in session from DB
+        # Update favorites in session by re-loading from DB to ensure consistency
         session['favorites'] = load_user_favorites_from_db(user_id)
         flash(f"{flower['name']} додано в обране.", "success")
-    except sqlite3.IntegrityError: # Handle if item is already in favorites
+    except sqlite3.IntegrityError: # Handle if item is already in favorites (UNIQUE constraint violation)
         flash("Ця квітка вже в обраному.", "info")
-        db.rollback() 
+        db.rollback()
     except Exception as e:
         flash(f"Помилка додавання до обраного: {e}", "danger")
         db.rollback()
-    
+
     return redirect(url_for('home'))
 
 @app.route('/remove_from_favorites/<int:flower_id>', methods=['POST'])
 def remove_from_favorites(flower_id):
-    """Removes an item from the favorites list."""
+    """
+    Removes an item from the user's favorites list.
+    Requires user to be logged in.
+    """
     user_id = session.get('user_id')
     if not user_id:
         flash('Будь ласка, увійдіть.', 'info')
@@ -936,9 +941,10 @@ def remove_from_favorites(flower_id):
 
     db = get_db_connection()
     cursor = db.cursor()
-    
+
+    # Get flower name for flash message before potential deletion
     flower_name_cursor = db.execute("SELECT name FROM products WHERE id = ?", (flower_id,)).fetchone()
-    flower_name = flower_name_cursor['name'] if flower_name_cursor else "Unknown product (possibly deleted)"
+    flower_name = flower_name_cursor['name'] if flower_name_cursor else "Невідомий товар"
 
     try:
         cursor.execute("DELETE FROM favorite_items WHERE user_id = ? AND flower_id = ?",
@@ -950,33 +956,39 @@ def remove_from_favorites(flower_id):
         print(f"Error removing from favorites: {e}")
         db.rollback()
 
-    # Update favorites in session from DB
+    # Update favorites in session by re-loading from DB to ensure consistency
     session['favorites'] = load_user_favorites_from_db(user_id)
     return redirect(url_for('view_favorites'))
 
 @app.route('/profile')
 def profile():
-    """Route for viewing user profile and changing password."""
+    """
+    Displays the user profile page, allowing password changes.
+    Requires user to be logged in.
+    """
     if not session.get('user_id'):
         flash('Будь ласка, увійдіть, щоб переглянути ваш профіль.', 'info')
         return redirect(url_for('login'))
 
     username = session.get('username')
-    
+
     # Load cart and favorites from session for the top bar icons
     user_logged_in = session.get('user_id') is not None
     cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
     favorites = session.get('favorites', []) if user_logged_in else []
 
-    return render_template('profile.html', 
-                           username=username, 
-                           cart_count=cart_count, # Passed to template
-                           favorites=favorites,    # Passed to template
-                           user_logged_in=user_logged_in) # Also passed for consistency
+    return render_template('profile.html',
+                           username=username,
+                           cart_count=cart_count,
+                           favorites=favorites,
+                           user_logged_in=user_logged_in)
 
 @app.route('/update_password', methods=['POST'])
 def update_password():
-    """Route for updating user password."""
+    """
+    Handles updating the user's password.
+    Requires user to be logged in and validates old password and new password confirmation.
+    """
     user_id = session.get('user_id')
     if not user_id:
         flash('Будь ласка, увійдіть, щоб змінити пароль.', 'info')
@@ -993,8 +1005,8 @@ def update_password():
     if new_password != confirm_new_password:
         flash("Новий пароль та підтвердження не збігаються.", "danger")
         return redirect(url_for('profile'))
-    
-    if len(new_password) < 6: 
+
+    if len(new_password) < 6: # Basic new password length validation
         flash("Новий пароль має бути не менше 6 символів.", "danger")
         return redirect(url_for('profile'))
 
@@ -1015,23 +1027,30 @@ def update_password():
 @app.template_filter('date')
 def format_date(value, format="%Y"):
     """
-    Formats a datetime object or "now" string to the specified format.
+    Jinja2 filter to format a datetime object or "now" string to the specified format.
     Accepts "now" to get the current date.
+    Note: This filter does not handle timezone conversion directly.
+    Timezone conversion for reviews is handled in get_reviews_for_product.
     """
     if value == 'now':
         return datetime.datetime.now().strftime(format)
     elif isinstance(value, datetime.datetime):
         return value.strftime(format)
     try:
-        dt_object = datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S") 
+        # Ensure value is treated as string for strptime, then parse
+        dt_object = datetime.datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S")
         return dt_object.strftime(format)
     except (TypeError, ValueError):
-        return value 
+        # Fallback for unexpected formats, return original value as string
+        return str(value)
 
 # Route for viewing product details and reviews
 @app.route('/product/<int:product_id>')
 def product_detail(product_id):
-    """Route for displaying the product details page with reviews."""
+    """
+    Displays the product details page, including its description, price,
+    average rating, and user reviews. Allows users to add reviews.
+    """
     user_logged_in = session.get('user_id') is not None
     flower = get_flower_by_id(product_id)
     if not flower:
@@ -1065,7 +1084,11 @@ def product_detail(product_id):
 # Route for adding a review
 @app.route('/product/<int:product_id>/add_review', methods=['POST'])
 def add_review(product_id):
-    """Route for adding a new review to a product."""
+    """
+    Handles adding a new review for a product.
+    Validates rating and checks if the user has already reviewed the product.
+    Requires user to be logged in.
+    """
     user_id = session.get('user_id')
     if not user_id:
         flash('Будь ласка, увійдіть, щоб залишити відгук.', 'info')
@@ -1074,19 +1097,18 @@ def add_review(product_id):
     rating = request.form.get('rating')
     comment = request.form.get('comment')
 
-    # Check if the user has already left a review
+    # Check if the user has already left a review for this product
     db = get_db_connection()
-    cursor = db.execute("SELECT COUNT(*) FROM reviews WHERE user_id = ? AND product_id = ?", 
+    cursor = db.execute("SELECT COUNT(*) FROM reviews WHERE user_id = ? AND product_id = ?",
                        (user_id, product_id))
     if cursor.fetchone()[0] > 0:
         flash('Ви вже залишили відгук для цього товару.', 'warning')
         return redirect(url_for('product_detail', product_id=product_id))
 
-
     if not rating:
         flash('Будь ласка, оберіть оцінку.', 'danger')
         return redirect(url_for('product_detail', product_id=product_id))
-    
+
     try:
         rating = int(rating)
         if not (1 <= rating <= 5):
@@ -1111,6 +1133,313 @@ def add_review(product_id):
         db.rollback()
 
     return redirect(url_for('product_detail', product_id=product_id))
+
+@app.route('/delete_review/<int:review_id>', methods=['POST'])
+def delete_review(review_id):
+    """
+    Allows a user to delete their own review.
+    Administrators are explicitly prevented from using this route.
+    """
+    user_id = session.get('user_id')
+    if not user_id:
+        flash('Будь ласка, увійдіть, щоб видалити відгук.', 'info')
+        return redirect(url_for('login'))
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    review_info = cursor.execute("SELECT user_id, product_id FROM reviews WHERE id = ?", (review_id,)).fetchone()
+
+    if not review_info:
+        flash("Відгук не знайдено.", "danger")
+        return redirect(url_for('home'))
+
+    # Prevent administrators from deleting reviews using this route
+    if session.get('is_admin'):
+        flash('Адміністратори не можуть видаляти відгуки через цей інтерфейс.', 'danger')
+        return redirect(url_for('product_detail', product_id=review_info['product_id']))
+
+
+    # Check if the logged-in user is the author of the review
+    if review_info['user_id'] != user_id:
+        flash("Ви не можете видалити чужий відгук.", "danger")
+        return redirect(url_for('product_detail', product_id=review_info['product_id']))
+
+    try:
+        cursor.execute("DELETE FROM reviews WHERE id = ?", (review_id,))
+        db.commit()
+        flash("Відгук успішно видалено.", "success")
+    except Exception as e:
+        flash(f"Помилка при видаленні відгуку: {e}", "danger")
+        db.rollback()
+
+    return redirect(url_for('product_detail', product_id=review_info['product_id']))
+
+@app.route('/orders_history')
+def orders_history():
+    """
+    Displays the current user's order history.
+    Requires user to be logged in.
+    """
+    user_id = session.get('user_id')
+    if not user_id:
+        flash('Будь ласка, увійдіть, щоб переглянути історію замовлень.', 'info')
+        return redirect(url_for('login'))
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    # Fetch all orders for the current user
+    orders_data = cursor.execute(
+        "SELECT id, total_amount, status, created_at FROM orders WHERE user_id = ? ORDER BY created_at DESC",
+        (user_id,)
+    ).fetchall()
+
+    orders = []
+    kyiv_offset = datetime.timedelta(hours=3)
+
+    for order_row in orders_data:
+        order_id = order_row['id']
+        # Fetch items for each order
+        order_items_data = cursor.execute(
+            """
+            SELECT oi.quantity, oi.price_at_purchase, p.name, p.image_url
+            FROM order_items oi
+            JOIN products p ON oi.flower_id = p.id
+            WHERE oi.order_id = ?
+            """,
+            (order_id,)
+        ).fetchall()
+
+        items = []
+        for item_row in order_items_data:
+            items.append({
+                'name': item_row['name'],
+                'quantity': item_row['quantity'],
+                'price_at_purchase': item_row['price_at_purchase'],
+                'image_url': item_row['image_url']
+            })
+
+        # Format created_at to Kyiv time
+        try:
+            utc_dt = datetime.datetime.strptime(order_row['created_at'], "%Y-%m-%d %H:%M:%S")
+            kyiv_dt = utc_dt + kyiv_offset
+            formatted_time = kyiv_dt.strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            formatted_time = order_row['created_at'] # Fallback
+
+        orders.append({
+            'id': order_row['id'],
+            'total_amount': order_row['total_amount'],
+            'status': order_row['status'],
+            'created_at': formatted_time,
+            'items': items
+        })
+
+    # Pass cart_count and favorites for display in the top bar
+    user_logged_in = session.get('user_id') is not None
+    cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
+    favorites = session.get('favorites', []) if user_logged_in else []
+
+    return render_template('orders_history.html',
+                           orders=orders,
+                           cart_count=cart_count,
+                           favorites=favorites,
+                           user_logged_in=user_logged_in)
+
+@app.route('/admin/orders')
+def admin_orders():
+    """
+    Displays all orders for administrators, allowing them to change order status.
+    Requires administrator privileges.
+    """
+    if not session.get('is_admin'):
+        flash('Доступ заборонено. Тільки адміністратори можуть переглядати замовлення.', 'danger')
+        return redirect(url_for('login'))
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    # Fetch all orders with user information
+    all_orders_data = cursor.execute(
+        """
+        SELECT o.id, o.total_amount, o.status, o.created_at, u.username
+        FROM orders o
+        JOIN users u ON o.user_id = u.id
+        ORDER BY o.created_at DESC
+        """
+    ).fetchall()
+
+    orders = []
+    kyiv_offset = datetime.timedelta(hours=3)
+
+    for order_row in all_orders_data:
+        order_id = order_row['id']
+        # Fetch items for each order
+        order_items_data = cursor.execute(
+            """
+            SELECT oi.quantity, oi.price_at_purchase, p.name, p.image_url
+            FROM order_items oi
+            JOIN products p ON oi.flower_id = p.id
+            WHERE oi.order_id = ?
+            """,
+            (order_id,)
+        ).fetchall()
+
+        items = []
+        for item_row in order_items_data:
+            items.append({
+                'name': item_row['name'],
+                'quantity': item_row['quantity'],
+                'price_at_purchase': item_row['price_at_purchase'],
+                'image_url': item_row['image_url']
+            })
+
+        # Format created_at to Kyiv time
+        try:
+            utc_dt = datetime.datetime.strptime(order_row['created_at'], "%Y-%m-%d %H:%M:%S")
+            kyiv_dt = utc_dt + kyiv_offset
+            formatted_time = kyiv_dt.strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            formatted_time = order_row['created_at'] # Fallback
+
+        orders.append({
+            'id': order_row['id'],
+            'username': order_row['username'],
+            'total_amount': order_row['total_amount'],
+            'status': order_row['status'],
+            'created_at': formatted_time,
+            'items': items
+        })
+
+    user_logged_in = session.get('user_id') is not None
+    cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
+    favorites = session.get('favorites', []) if user_logged_in else []
+
+    return render_template('admin_orders.html',
+                           orders=orders,
+                           cart_count=cart_count,
+                           favorites=favorites,
+                           user_logged_in=user_logged_in)
+
+@app.route('/admin_dashboard')
+def admin_dashboard():
+    """
+    Displays the admin dashboard.
+    Only accessible by logged-in administrators.
+    """
+    if not session.get('is_admin'):
+        flash('Доступ заборонено. Тільки адміністратори мають доступ до адмін-панелі.', 'danger')
+        return redirect(url_for('login'))
+
+    user_logged_in = session.get('user_id') is not None
+    cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
+    favorites = session.get('favorites', []) if user_logged_in else []
+
+    return render_template('admin_dashboard.html',
+                           cart_count=cart_count,
+                           favorites=favorites,
+                           user_logged_in=user_logged_in)
+
+@app.route('/admin/update_order_status/<int:order_id>', methods=['POST'])
+def update_order_status(order_id):
+    """
+    Updates the status of a specific order.
+    Requires administrator privileges.
+    """
+    if not session.get('is_admin'):
+        flash('Доступ заборонено. Тільки адміністратори можуть оновлювати статус замовлень.', 'danger')
+        return redirect(url_for('login'))
+
+    new_status = request.form.get('status')
+    if new_status not in ['Очікується', 'Підтверджено']:
+        flash('Недійсний статус замовлення.', 'danger')
+        return redirect(url_for('admin_orders'))
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+        cursor.execute("UPDATE orders SET status = ? WHERE id = ?", (new_status, order_id))
+        db.commit()
+        flash(f"Статус замовлення №{order_id} оновлено на '{new_status}'.", "success")
+    except Exception as e:
+        flash(f"Помилка при оновленні статусу замовлення: {e}", "danger")
+        db.rollback()
+
+    return redirect(url_for('admin_orders'))
+
+# --- TEST ROUTE FOR MANUAL ORDER CREATION (FOR DEVELOPMENT ONLY) ---
+@app.route('/create_test_order', methods=['GET'])
+def create_test_order():
+    """
+    [DEVELOPMENT ONLY]
+    Creates a test order for the current logged-in user with items from their cart.
+    Bypasses Stripe payment. Decreases product stock.
+    This route should be REMOVED or PROTECTED in a production environment.
+    """
+    user_id = session.get('user_id')
+    if not user_id:
+        flash('Будь ласка, увійдіть як користувач, щоб створити тестове замовлення.', 'info')
+        return redirect(url_for('login'))
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    # Get current user's cart
+    cart = load_user_cart_from_db(user_id)
+    if not cart:
+        flash('Ваш кошик порожній. Додайте товари, щоб створити тестове замовлення.', 'warning')
+        return redirect(url_for('home'))
+
+    total_amount = sum(item['price'] * item['quantity'] for item in cart)
+
+    try:
+        # 1. Create a new order with 'Очікується' status
+        cursor.execute(
+            "INSERT INTO orders (user_id, total_amount, status) VALUES (?, ?, ?)",
+            (user_id, total_amount, 'Очікується')
+        )
+        order_id = cursor.lastrowid # Get the ID of the newly created order
+
+        # 2. Add items to order_items and decrease product stock
+        for item in cart:
+            flower_id = item['id']
+            ordered_quantity = item['quantity']
+            price_at_purchase = item['price']
+
+            # Check stock before creating the order
+            current_flower = get_flower_by_id(flower_id)
+            if not current_flower or current_flower['stock'] < ordered_quantity:
+                flash(f"Недостатньо товару '{item['name']}' для тестового замовлення. В наявності: {current_flower['stock'] if current_flower else 0}.", 'danger')
+                db.rollback() # Rollback the order creation if stock is insufficient
+                return redirect(url_for('view_cart')) # Redirect back to cart or home
+
+            cursor.execute(
+                "INSERT INTO order_items (order_id, flower_id, quantity, price_at_purchase) VALUES (?, ?, ?, ?)",
+                (order_id, flower_id, ordered_quantity, price_at_purchase)
+            )
+
+            # Decrease stock
+            new_stock = current_flower['stock'] - ordered_quantity
+            cursor.execute("UPDATE products SET stock = ? WHERE id = ?", (new_stock, flower_id))
+            print(f"Test Order: Product {flower_id} stock updated from {current_flower['stock']} to {new_stock}")
+
+        # 3. Clear user's cart
+        cursor.execute("DELETE FROM cart_items WHERE user_id = ?", (user_id,))
+        db.commit()
+        session.pop('cart', None) # Clear cart from session
+
+        flash(f"Тестове замовлення №{order_id} успішно створено!.", "success")
+        return redirect(url_for('orders_history'))
+
+    except Exception as e:
+        db.rollback()
+        flash(f"Помилка при створенні тестового замовлення: {e}", "danger")
+        print(f"Error creating test order: {e}")
+        return redirect(url_for('home'))
+
+# --- END TEST ROUTE ---
 
 
 if __name__ == '__main__':

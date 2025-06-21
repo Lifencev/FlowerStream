@@ -34,11 +34,81 @@
             transition: color 0.3s ease;
         }
         .social-icons a:hover {
-            color: #800080; /* Purple color on hover */
+            color: #800080;
         }
-        .flower-card-img {
-            height: 300px; /* Fixed height for flower images */
-            object-fit: cover; /* Crop image to fill container */
+
+        /* Navbar specific styles */
+        .navbar-brand {
+            font-size: 1.7rem; /* Make the brand name bigger */
+            font-weight: bold;
+            color: #800080 !important; /* Force purple color */
+        }
+        .navbar-nav .nav-link {
+            font-size: 1.1rem; /* Slightly larger nav links */
+        }
+
+        /* Styles for the icon container and badge to prevent shifting */
+        .icon-badge-container {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.5em; /* Fixed width to prevent shift */
+            height: 1.5em; /* Fixed height */
+            vertical-align: middle;
+            margin-left: 5px; /* Space between text and icon */
+        }
+
+        .icon-badge-container .bi {
+            font-size: 1.2em;
+        }
+
+        .icon-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            font-size: 0.6em;
+            padding: 0.15em 0.4em;
+            line-height: 1;
+            min-width: 1.2em;
+            text-align: center;
+            transform: translate(50%, -50%);
+            z-index: 1;
+            border-radius: 50%;
+        }
+
+        .navbar-nav .nav-link {
+            display: flex;
+            align-items: center;
+            min-height: 40px; /* To prevent vertical shift, ensure enough space for content + icon + badge */
+        }
+
+        .flower-card {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+            border-radius: 8px;
+            overflow: hidden; /* Ensures image corners are rounded with card */
+            height: 100%; /* Make cards same height */
+            display: flex;
+            flex-direction: column;
+        }
+        .flower-card img {
+            height: 300px;
+            object-fit: cover;
+        }
+        .flower-card .card-body {
+            flex-grow: 1; /* Allows card body to expand */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .flower-card .card-title {
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: #800080;
+        }
+        .flower-card .card-text {
+            font-size: 0.95rem;
+            color: #555;
         }
         .btn-purple {
             background-color: #800080;
@@ -48,204 +118,372 @@
             background-color: #660066;
             color: white;
         }
-        /* Style for product card link */
-        .card-link {
-            text-decoration: none; /* Remove underline */
-            color: inherit; /* Inherit text color */
+
+        /* Align "Add to Cart" and "Favorite" buttons to bottom */
+        .card-buttons {
+            margin-top: auto; /* Pushes buttons to the bottom of the card body */
+            padding-top: 15px; /* Add some padding above buttons */
+            border-top: 1px solid #eee; /* Separator line */
+            display: flex;
+            flex-direction: column;
+            gap: 10px; /* Space between buttons */
         }
-        .card-link:hover .card-title {
-            color: #800080; /* Change title color on hover */
+        .card-buttons .btn {
+            width: 100%; /* Make buttons full width */
         }
 
+        .edit-mode-indicator {
+            position: fixed;
+            top: 70px; /* Adjusted to be below the navbar */
+            right: 10px;
+            background-color: red;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            z-index: 1000;
+        }
+
+        /* Add margin to main container when edit mode is active to prevent overlap */
+        body.edit-mode-active .container.py-4 {
+            margin-top: 50px; /* Adjust this value as needed */
+        }
+
+        /* Styles for quantity input on home page */
+        .add-to-cart-form {
+            display: flex;
+            align-items: center;
+            gap: 5px; /* Reduced gap between input and button */
+            flex-wrap: nowrap; /* Prevent wrapping for input and button */
+            width: 100%; /* Ensure the form itself takes full width */
+        }
+        .add-to-cart-form input[type="number"] {
+            width: 60px; /* Fixed width for the number input */
+            text-align: center;
+            flex-shrink: 0; /* Prevent from shrinking */
+        }
+        .add-to-cart-form button {
+            flex: 1; /* Allow button to take up remaining space */
+            min-width: unset; /* Remove previous min-width constraint */
+        }
+
+        /* Responsive adjustments for quantity input */
+        @media (max-width: 575.98px) { /* For extra small devices */
+            .add-to-cart-form {
+                flex-direction: column; /* Stack input and button vertically */
+                align-items: stretch; /* Stretch items to full width */
+            }
+            .add-to-cart-form input[type="number"] {
+                max-width: 100%; /* Full width for input */
+            }
+            .add-to-cart-form button {
+                width: 100%; /* Full width for button */
+            }
+        }
     </style>
 </head>
-<body>
-<div class="container py-4">
-    <!-- Top row with icons -->
-    <div class="d-flex justify-content-end align-items-center mb-3">
-        <!-- Favorites -->
-        <a href="{{ url_for('view_favorites') }}" class="text-dark me-3 position-relative" title="Улюблене">
-            <i class="bi bi-heart fs-4"></i>
-            {% set fav_count = favorites|length %}
-            {% if fav_count > 0 %}
-            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                {{ fav_count }}
-            </span>
-            {% endif %}
-        </a>
-
-        <!-- Cart -->
-        <a href="{{ url_for('view_cart') }}" class="text-dark me-3 position-relative" title="Кошик">
-            <i class="bi bi-cart fs-4"></i>
-            {% if cart_count > 0 %}
-            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                {{ cart_count }}
-            </span>
-            {% endif %}
-        </a>
-        <!-- Account -->
-        <a href="{{ url_for('profile') if session.get('user_id') else url_for('login') }}" class="text-dark" title="Кабінет">
-            <i class="bi bi-person fs-4"></i>
-        </a>
-    </div>
-
-    <h1 class="mb-4">FlowerStream</h1>
-
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-          </div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-
-    {# Product search #}
-    <form method="GET" action="{{ url_for('home') }}" class="mb-4">
-        <div class="input-group">
-            <input type="text" class="form-control" placeholder="Пошук товарів за назвою або описом..." name="search_query" value="{{ search_query if search_query }}">
-            <button class="btn btn-outline-secondary" type="submit">Пошук</button>
-            {% if search_query %}
-            <a href="{{ url_for('home') }}" class="btn btn-outline-danger">Скинути</a>
-            {% endif %}
-        </div>
-    </form>
-
-    {# Sorting selector #}
-    <form method="get" class="mb-4 d-flex align-items-center" id="sortForm">
-        {% if search_query %}
-        <input type="hidden" name="search_query" value="{{ search_query }}">
-        {% endif %}
-        <label for="sort" class="me-2 fw-semibold">Сортувати:</label>
-        <select name="sort" id="sort" class="form-select w-auto" onchange="document.getElementById('sortForm').submit();">
-            <option value="">Хрогологія додавання товару на сайт</option>
-            <option value="price_asc" {% if request.args.get('sort') == 'price_asc' %}selected{% endif %}>Спочатку дешевше</option>
-            <option value="price_desc" {% if request.args.get('sort') == 'price_desc' %}selected{% endif %}>Спочатку дорожче</option>
-        </select>
-    </form>
-
-    {# Edit mode buttons for admin #}
-    {% if session.get('is_admin') %}
-    <div class="mb-4 text-center">
-        <form method="POST" action="{{ url_for('toggle_edit_mode') }}" class="d-inline-block me-2">
-            {% if edit_mode %}
-            <button type="submit" class="btn btn-warning">Завершити редагування</button>
-            {% else %}
-            <button type="submit" class="btn btn-info">Редагувати товари</button>
-            {% endif %}
-        </form>
-        {% if edit_mode %}
-        <button type="button" class="btn btn-primary btn-purple" data-bs-toggle="modal" data-bs-target="#addFlowerModal">
-            Додати новий товар
-        </button>
-        {% endif %}
-    </div>
-    {% endif %}
-
-    <div class="row">
-        {% for flower in flowers %}
-        <div class="col-md-4 mb-4">
-            <div class="card h-100">
-                <a href="{{ url_for('product_detail', product_id=flower.id) }}" class="card-link">
-                    <img src="{{ flower.image_url if flower.image_url else 'https://placehold.co/400x200/cccccc/333333?text=No+Image' }}" class="card-img-top flower-card-img" alt="{{ flower.name }}" onerror="this.onerror=null;this.src='https://placehold.co/400x200/cccccc/333333?text=No+Image';">
-                </a>
-                <div class="card-body">
-                    {# Admin edit mode #}
-                    {% if session.get('is_admin') and edit_mode %}
-                    <form method="POST" action="{{ url_for('edit_flower', flower_id=flower.id) }}" enctype="multipart/form-data">
-                        <input type="text" class="form-control mb-2" name="name" value="{{ flower.name }}">
-                        <textarea class="form-control mb-2" name="description">{{ flower.description }}</textarea>
-                        <input type="number" class="form-control mb-2" name="price" value="{{ flower.price }}" step="0.01">
-                        <div class="mb-3">
-                            <label for="editFlowerImage-{{ flower.id }}" class="form-label">Змінити зображення</label>
-                            <input class="form-control" type="file" id="editFlowerImage-{{ flower.id }}" name="image" accept="image/*">
-                        </div>
-                        <button type="submit" class="btn btn-sm btn-success w-100">Зберегти зміни</button>
-                    </form>
-                    <form method="POST" action="{{ url_for('delete_flower', flower_id=flower.id) }}" class="mt-2" onsubmit="return confirm('Ви впевнені, що хочете видалити цей товар?');">
-                        <button type="submit" class="btn btn-sm btn-danger w-100">Видалити товар</button>
-                    </form>
-                    {# Normal mode for users or admins not in edit mode #}
-                    {% else %}
-                    <a href="{{ url_for('product_detail', product_id=flower.id) }}" class="card-link">
-                        <h5 class="card-title">{{ flower.name }}</h5>
-                    </a>
-                    <p class="card-text">{{ flower.description }}</p>
-                    <p class="card-text fw-bold">
-                        {% if flower.price == flower.price | int %}
-                            {{ flower.price | int }} грн
-                        {% else %}
-                            {{ "%.2f"|format(flower.price) }} грн
-                        {% endif %}
-                    </p>
-                    <form method="POST" action="{{ url_for('add_to_cart', flower_id=flower.id) }}" class="mt-2">
-                        <div class="input-group mb-2">
-                            <input type="number" name="quantity" class="form-control" value="1" min="1" aria-label="Кількість" aria-describedby="add-to-cart-button">
-                            <button class="btn btn-outline-success" type="submit" id="add-to-cart-button">У кошик</button>
-                        </div>
-                    </form>
-                    <form method="POST" action="{{ url_for('add_to_favorites', flower_id=flower.id) }}">
-                        <button class="btn btn-outline-danger btn-sm mt-2 w-100">
-                            <i class="bi bi-heart"></i> До обраного
-                        </button>
-                    </form>
+<body {% if edit_mode %}class="edit-mode-active"{% endif %}>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light shadow-sm">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('home') }}">FlowerStream</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link active" aria-current="page" href="{{ url_for('home') }}">Головна</a>
+                    </li>
+                    {% if user_logged_in %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('view_cart') }}">
+                            Кошик
+                            <span class="icon-badge-container">
+                                <i class="bi bi-cart"></i>
+                                {% if cart_count > 0 %}<span class="badge bg-danger rounded-pill icon-badge">{{ cart_count }}</span>{% endif %}
+                            </span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('view_favorites') }}">
+                            Обране
+                            <span class="icon-badge-container">
+                                <i class="bi bi-heart"></i>
+                                {% if favorites|length > 0 %}<span class="badge bg-primary rounded-pill icon-badge">{{ favorites|length }}</span>{% endif %}
+                            </span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('orders_history') }}">Історія замовлень</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('profile') }}">Профіль</a>
+                    </li>
                     {% endif %}
-                </div>
+                    {% if is_admin %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_dashboard') }}">Адмін-панель</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_orders') }}">Управління замовленнями</a>
+                    </li>
+                    {% endif %}
+                </ul>
+                <ul class="navbar-nav">
+                    {% if user_logged_in %}
+                        <li class="nav-item">
+                            <span class="nav-link text-dark">Привіт, {{ session.username }}!</span>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link btn btn-outline-danger btn-sm" href="{{ url_for('logout') }}">Вийти</a>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link btn btn-outline-primary btn-sm me-2" href="{{ url_for('login') }}">Увійти</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link btn btn-primary btn-sm" href="{{ url_for('register') }}" style="background-color: purple; color: white;">Реєстрація</a>
+                        </li>
+                    {% endif %}
+                </ul>
             </div>
         </div>
-        {% endfor %}
-    </div>
-</div>
+    </nav>
 
-<!-- Modal for adding new product -->
-<div class="modal fade" id="addFlowerModal" tabindex="-1" aria-labelledby="addFlowerModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="addFlowerModalLabel">Додати новий товар</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <form method="POST" action="{{ url_for('add_flower') }}" enctype="multipart/form-data">
-          <div class="mb-3">
-            <label for="flowerName" class="form-label">Назва товару</label>
-            <input type="text" class="form-control" id="flowerName" name="name" required>
-          </div>
-          <div class="mb-3">
-            <label for="flowerDescription" class="form-label">Опис</label>
-            <textarea class="form-control" id="flowerDescription" name="description" rows="3"></textarea>
-          </div>
-          <div class="mb-3">
-            <label for="flowerPrice" class="form-label">Ціна (грн)</label>
-            <input type="number" class="form-control" id="flowerPrice" name="price" step="0.01" required>
-          </div>
-          <div class="mb-3">
-            <label for="flowerImage" class="form-label">Зображення товару</label>
-            <input class="form-control" type="file" id="flowerImage" name="image" accept="image/*">
-          </div>
-          <button type="submit" class="btn btn-purple w-100">Додати товар</button>
-        </form>
-      </div>
-    </div>
-  </div>
-</div>
-
-
-<footer class="footer mt-auto">
-    <div class="container text-end">
-        <div class="social-icons">
-            <a href="https://wa.me/PHONE_NUMBER" target="_blank" title="WhatsApp"><i class="bi bi-whatsapp"></i></a>
-            <a href="tel:PHONE_NUMBER" title="Телефон"><i class="bi bi-telephone"></i></a>
-            <a href="https://t.me/tarassts" target="_blank" title="Telegram"><i class="bi bi-telegram"></i></a>
-            <a href="https://www.youtube.com/YOUTUBE_CHANNEL" target="_blank" title="YouTube"><i class="bi bi-youtube"></i></a>
-            <a href="https://www.instagram.com/INSTAGRAM_USERNAME" target="_blank" title="Instagram"><i class="bi bi-instagram"></i></a>
+    {% if edit_mode %}
+        <div class="edit-mode-indicator">
+            Режим редагування АДМІНА УВІМКНЕНО
         </div>
-        <p class="text-muted mt-2">&copy; {{ 'now' | date('%Y') }} FlowerStream. Всі права захищені.</p>
-    </div>
-</footer>
+    {% endif %}
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <div class="container py-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <h1 class="mb-4 text-center">Ласкаво просимо до FlowerStream!</h1>
+
+        {% if is_admin %}
+        <div class="d-flex justify-content-center mb-4">
+            <form action="{{ url_for('toggle_edit_mode') }}" method="post" class="d-inline">
+                <button type="submit" class="btn btn-outline-secondary">
+                    Режим адміністрування: {{ 'УВІМКНЕНО' if edit_mode else 'ВИМКНЕНО' }}
+                </button>
+            </form>
+        </div>
+        {% endif %}
+
+        {% if is_admin and edit_mode %}
+        <div class="mb-4 p-3 bg-light rounded shadow-sm">
+            <h3 class="mb-3">Додати новий товар</h3>
+            <form action="{{ url_for('add_flower') }}" method="post" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label for="flowerName" class="form-label">Назва квітки</label>
+                    <input type="text" class="form-control" id="flowerName" name="name" required>
+                </div>
+                <div class="mb-3">
+                    <label for="flowerDescription" class="form-label">Опис</label>
+                    <textarea class="form-control" id="flowerDescription" name="description" rows="3"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="flowerPrice" class="form-label">Ціна (грн)</label>
+                    <input type="number" class="form-control" id="flowerPrice" name="price" step="0.01" required>
+                </div>
+                <div class="mb-3">
+                    <label for="flowerStock" class="form-label">Кількість в наявності</label>
+                    <input type="number" class="form-control" id="flowerStock" name="stock" min="0" required>
+                </div>
+                <div class="mb-3">
+                    <label for="flowerImage" class="form-label">Зображення товару</label>
+                    <input class="form-control" type="file" id="flowerImage" name="image" accept="image/*">
+                </div>
+                <button type="submit" class="btn btn-purple w-100">Додати товар</button>
+            </form>
+        </div>
+        {% endif %}
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="mb-0">Наші квіти</h3>
+            <div class="d-flex">
+                <form action="{{ url_for('home') }}" method="get" class="d-flex me-3">
+                    <input type="search" name="search_query" class="form-control me-2" placeholder="Пошук квітів..." aria-label="Search" value="{{ search_query or '' }}">
+                    <button class="btn btn-outline-success" type="submit">Пошук</button>
+                </form>
+                <form action="{{ url_for('home') }}" method="get" class="d-flex">
+                    <select name="sort" onchange="this.form.submit()" class="form-select">
+                        <option value="name_asc" {% if sort_order == 'name_asc' %}selected{% endif %}>Назва (А-Я)</option>
+                        <option value="name_desc" {% if sort_order == 'name_desc' %}selected{% endif %}>Назва (Я-А)</option>
+                        <option value="price_asc" {% if sort_order == 'price_asc' %}selected{% endif %}>Ціна (від низької до високої)</option>
+                        <option value="price_desc" {% if sort_order == 'price_desc' %}selected{% endif %}>Ціна (від високої до низької)</option>
+                        <option value="newest" {% if sort_order == 'newest' %}selected{% endif %}>Новіші</option>
+                        <option value="oldest" {% if sort_order == 'oldest' %}selected{% endif %}>Старіші</option>
+                    </select>
+                    {% if search_query %}<input type="hidden" name="search_query" value="{{ search_query }}">{% endif %}
+                </form>
+            </div>
+        </div>
+
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+            {% for flower in flowers %}
+            <div class="col">
+                <div class="card flower-card">
+                    <a href="{{ url_for('product_detail', product_id=flower.id) }}">
+                         <img src="{{ url_for('static', filename=flower.image_url.split('static/')[-1]) }}" class="card-img-top" alt="{{ flower.name }}">
+                    </a>
+                    <div class="card-body">
+                        <h5 class="card-title">{{ flower.name }}</h5>
+                        <p class="card-text">{{ flower.description }}</p>
+                        <p class="card-text"><strong>{{ "%.2f"|format(flower.price) }} грн</strong></p>
+                        <p class="card-text"><small class="text-muted">В наявності: {{ flower.stock }}</small></p>
+
+                        {% if is_admin and edit_mode %}
+                        <div class="d-flex flex-column gap-2">
+                            <!-- Edit button triggers modal -->
+                            <button type="button" class="btn btn-outline-primary btn-sm edit-flower-btn" data-bs-toggle="modal" data-bs-target="#editFlowerModal" data-flower-id="{{ flower.id }}">
+                                Редагувати
+                            </button>
+                            <form action="{{ url_for('delete_flower', flower_id=flower.id) }}" method="post" class="d-inline">
+                                <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('Ви впевнені, що хочете видалити цей товар?');">Видалити</button>
+                            </form>
+                        </div>
+                        {% else %}
+                            <div class="card-buttons">
+                                <form action="{{ url_for('add_to_cart', flower_id=flower.id) }}" method="post" class="add-to-cart-form">
+                                    <input type="number" name="quantity" class="form-control" value="1" min="1" max="{{ flower.stock }}" {% if flower.stock == 0 %}disabled{% endif %}>
+                                    <button type="submit" class="btn btn-purple" {% if flower.stock == 0 %}disabled{% endif %}>
+                                        {% if flower.stock == 0 %}Немає в наявності{% else %}Додати в кошик{% endif %}
+                                    </button>
+                                </form>
+                                <form action="{{ url_for('add_to_favorites', flower_id=flower.id) }}" method="post">
+                                    <button type="submit" class="btn btn-outline-info">
+                                        {% if flower.id in favorites|map(attribute='id')|list %}
+                                            <i class="bi bi-heart-fill"></i> В обраному
+                                        {% else %}
+                                            <i class="bi bi-heart"></i> Додати до обраного
+                                        {% endif %}
+                                    </button>
+                                </form>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Edit Flower Modal -->
+    <div class="modal fade" id="editFlowerModal" tabindex="-1" aria-labelledby="editFlowerModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="editFlowerModalLabel">Редагувати товар</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form id="editFlowerForm" method="post" enctype="multipart/form-data">
+              <div class="mb-3">
+                <label for="editFlowerName" class="form-label">Назва квітки</label>
+                <input type="text" class="form-control" id="editFlowerName" name="name" required>
+              </div>
+              <div class="mb-3">
+                <label for="editFlowerDescription" class="form-label">Опис</label>
+                <textarea class="form-control" id="editFlowerDescription" name="description" rows="3"></textarea>
+              </div>
+              <div class="mb-3">
+                <label for="editFlowerPrice" class="form-label">Ціна (грн)</label>
+                <input type="number" class="form-control" id="editFlowerPrice" name="price" step="0.01" required>
+              </div>
+                <div class="mb-3">
+                    <label for="editFlowerStock" class="form-label">Кількість в наявності</label>
+                    <input type="number" class="form-control" id="editFlowerStock" name="stock" min="0" required>
+                </div>
+              <div class="mb-3">
+                <label for="editFlowerImage" class="form-label">Зображення товару</label>
+                <input class="form-control" type="file" id="editFlowerImage" name="image" accept="image/*">
+                <small class="form-text text-muted" id="currentFlowerImageText">Поточне зображення: Немає</small>
+              </div>
+              <button type="submit" class="btn btn-purple w-100">Зберегти зміни</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer mt-auto">
+        <div class="container text-end">
+            <div class="social-icons">
+                <a href="https://wa.me/PHONE_NUMBER" target="_blank" title="WhatsApp"><i class="bi bi-whatsapp"></i></a>
+                <a href="tel:PHONE_NUMBER" title="Телефон"><i class="bi bi-telephone"></i></a>
+                <a href="https://t.me/tarassts" target="_blank" title="Telegram"><i class="bi bi-telegram"></i></a>
+                <a href="https://www.youtube.com/YOUTUBE_CHANNEL" target="_blank" title="YouTube"><i class="bi bi-youtube"></i></a>
+                <a href="https://www.instagram.com/INSTAGRAM_USERNAME" target="_blank" title="Instagram"><i class="bi bi-instagram"></i></a>
+            </div>
+            <p class="text-muted mt-2">&copy; {{ 'now' | date('%Y') }} FlowerStream. Всі права захищені.</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const editFlowerModal = document.getElementById('editFlowerModal');
+            const editFlowerForm = document.getElementById('editFlowerForm');
+            const editFlowerNameInput = document.getElementById('editFlowerName');
+            const editFlowerDescriptionTextarea = document.getElementById('editFlowerDescription');
+            const editFlowerPriceInput = document.getElementById('editFlowerPrice');
+            const editFlowerStockInput = document.getElementById('editFlowerStock'); // Get stock input
+            const currentFlowerImageText = document.getElementById('currentFlowerImageText');
+
+            editFlowerModal.addEventListener('show.bs.modal', function (event) {
+                const button = event.relatedTarget; // Button that triggered the modal
+                const flowerId = button.getAttribute('data-flower-id');
+
+                // Set the form action dynamically based on flowerId
+                editFlowerForm.action = `/edit_flower/${flowerId}`;
+
+                // Fetch flower data via AJAX
+                fetch(`/get_flower_data/${flowerId}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        editFlowerNameInput.value = data.name || '';
+                        editFlowerDescriptionTextarea.value = data.description || '';
+                        editFlowerPriceInput.value = data.price || '';
+                        editFlowerStockInput.value = data.stock || ''; // Populate stock field
+
+                        // Update current image text
+                        if (data.image_url) {
+                            const imageName = data.image_url.split('/').pop();
+                            currentFlowerImageText.innerHTML = `Поточне зображення: <a href=\"${data.image_url}\" target=\"_blank\">${imageName}</a>`;
+                        } else {
+                            currentFlowerImageText.textContent = 'Поточне зображення: Немає';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Fetch error:', error);
+                        // Using a simple alert for demonstration, consider a more user-friendly modal in production
+                        alert('Помилка мережі при завантаженні даних товару.');
+                    });
+            });
+
+            // Clear form fields when the modal is hidden
+            editFlowerModal.addEventListener('hidden.bs.modal', function () {
+                editFlowerForm.reset(); // Resets all form fields
+                editFlowerForm.action = ''; // Clear the action attribute
+                currentFlowerImageText.textContent = 'Поточне зображення: Немає'; // Reset image text
+            });
+        });
+    </script>
 </body>
 </html>
