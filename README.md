@@ -84,7 +84,7 @@ STRIPE_PUBLISHABLE_KEY=pk_live
 4. Запуск проєкту
 
 ```
-flask run
+python app/app.py
 ```
 
 Відкрийте в браузері http://127.0.0.1:5000
