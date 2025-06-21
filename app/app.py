@@ -11,6 +11,19 @@ import uuid # Import uuid for generating unique filenames and reset tokens
 
 load_dotenv(find_dotenv())
 
+import requests
+
+def get_uah_to_eur_rate():
+    try:
+        response = requests.get("https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?valcode=EUR&json")
+        data = response.json()
+        rate = float(data[0]['rate'])
+        return rate
+    except Exception as e:
+        print(f"Не вдалося отримати курс НБУ: {e}")
+        return 50.0  # extra price in case of error of getting rate
+
+
 app = Flask(__name__)
 app.config.from_object(Config)
 stripe.api_key = app.config['STRIPE_SECRET_KEY']
@@ -38,6 +51,7 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+
 def get_db_connection():
     """
     Establishes a database connection.
@@ -51,12 +65,14 @@ def get_db_connection():
         db.row_factory = sqlite3.Row
     return db
 
+
 @app.teardown_appcontext
 def close_connection(exception):
     """Closes the database connection after the request is complete."""
     db = getattr(g, '_database', None)
     if db is not None:
         db.close()
+
 
 def init_db():
     """
@@ -160,7 +176,55 @@ def init_db():
                 'description': 'Ніжна біла лілія – вишуканий подарунок.',
                 'price': 120,
                 'image_url': 'static/images/flower3.jpg'
-            }
+            },
+            {
+                'name': 'Ромашка',
+                'description': 'Світла та ніжна ромашка – символ чистоти.',
+                'price': 80,
+                'image_url': 'static/images/flower4.jpg'
+            },
+            {
+                'name': 'Гвоздика',
+                'description': 'Яскрава гвоздика – чудовий подарунок.',
+                'price': 95,
+                'image_url': 'static/images/flower5.jpeg'
+            },
+            {
+                'name': 'Астра',
+                'description': 'Різнобарвна астра додасть настрою.',
+                'price': 85,
+                'image_url': 'static/images/flower6.jpg'
+            },
+            {
+                'name': 'Незабутка',
+                'description': 'Маленька незабутка – символ пам’яті.',
+                'price': 70,
+                'image_url': 'static/images/flower7.jpg'
+            },
+            {
+                'name': 'Гладіолус',
+                'description': 'Вишуканий гладіолус для особливих моментів.',
+                'price': 110,
+                'image_url': 'static/images/flower8.jpg'
+            },
+            {
+                'name': 'Нарцис',
+                'description': 'Весняний нарцис – передвісник тепла.',
+                'price': 90,
+                'image_url': 'static/images/flower9.jpg'
+            },
+            {
+                'name': 'Крокус',
+                'description': 'Перший весняний крокус – надія і радість.',
+                'price': 75,
+                'image_url': 'static/images/flower10.jpg'
+            },
+            {
+                'name': 'Гербера',
+                'description': 'Яскрава гербера – посмішка в кожен день.',
+                'price': 100,
+                'image_url': 'static/images/flower11.jpg'
+            },
         ]
         for flower in initial_flowers_data:
             cursor.execute("INSERT INTO products (name, description, price, image_url) VALUES (?, ?, ?, ?)",
@@ -174,28 +238,37 @@ with app.app_context():
     init_db()
 
 
-def load_products_from_db(search_term=None):
+def load_products_from_db(search_term=None, sort_order=None):
     """
     Loads all products (flowers) from the products table.
     If search_term is provided, filters products by name or description.
     """
     db = get_db_connection()
     cursor = db.cursor()
+
+    base_query = "SELECT * FROM products"
+    conditions = []
+    params = []
+
     if search_term:
+        conditions.append("(name LIKE ? OR description LIKE ?)")
         search_pattern = f"%{search_term}%"
-        cursor.execute(
-            "SELECT * FROM products WHERE name LIKE ? OR description LIKE ? ORDER BY id ASC",
-            (search_pattern, search_pattern)
-        )
+        params.extend([search_pattern, search_pattern])
+
+    if conditions:
+        base_query += " WHERE " + " AND ".join(conditions)
+
+    # Sorting
+    if sort_order == 'price_asc':
+        base_query += " ORDER BY price ASC"
+    elif sort_order == 'price_desc':
+        base_query += " ORDER BY price DESC"
     else:
-        cursor.execute("SELECT * FROM products ORDER BY id ASC")
+        base_query += " ORDER BY id ASC"
+
+    cursor.execute(base_query, params)
     return cursor.fetchall()
 
-def get_flower_by_id(flower_id):
-    """Returns a flower object by ID from the DB."""
-    db = get_db_connection()
-    cursor = db.execute("SELECT * FROM products WHERE id = ?", (flower_id,))
-    return cursor.fetchone()
 
 def get_reviews_for_product(product_id):
     """Returns all reviews for a specific product."""
@@ -208,6 +281,14 @@ def get_reviews_for_product(product_id):
         ORDER BY r.created_at DESC
     """, (product_id,))
     return cursor.fetchall()
+
+
+def get_flower_by_id(flower_id):
+    """Returns a flower object by ID from the DB."""
+    db = get_db_connection()
+    cursor = db.execute("SELECT * FROM products WHERE id = ?", (flower_id,))
+    return cursor.fetchone()
+
 
 def get_average_rating_for_product(product_id):
     """Calculates the average rating for a specific product."""
@@ -287,7 +368,8 @@ def home():
     user_logged_in = session.get('user_id') is not None
 
     search_query = request.args.get('search_query') # Get search query
-    flowers = load_products_from_db(search_query) # Pass it to the loading function
+    sort_order = request.args.get('sort')  # 'price_asc' or 'price_desc'
+    flowers = load_products_from_db(search_query, sort_order) # Pass it to the loading function
 
     cart = []
     cart_count = 0
@@ -329,12 +411,27 @@ def login():
 
             session['edit_mode'] = False # Disable edit mode on login
 
+        db = get_db_connection()
+        user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+
+        if user and check_password_hash(user['password_hash'], password):
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            session['is_admin'] = (user['role'] == 'admin')
+
+            # Load cart and favorites from DB into session after login
+            session['cart'] = load_user_cart_from_db(user['id'])
+            session['favorites'] = load_user_favorites_from_db(user['id'])
+
+            session['edit_mode'] = False # Disable edit mode on login
+
             flash('Успішний вхід!', 'success')
             return redirect(url_for('home'))
         else:
             flash('Невірні логін або пароль.', 'danger')
 
     return render_template('admin_login.html')
+
 
 @app.route('/logout')
 def logout():
@@ -671,7 +768,7 @@ def decrease_quantity(index):
 
 @app.route('/cart')
 def view_cart():
-    """Route for viewing the cart."""
+    """Visualise items in user's cart"""
     if not session.get('user_id'):
         flash('Будь ласка, увійдіть, щоб переглянути ваш кошик.', 'info')
         return redirect(url_for('login'))
@@ -679,14 +776,21 @@ def view_cart():
     cart = session.get('cart', [])
     total = sum(item['price'] * item['quantity'] for item in cart)
 
-    # Pass cart_count and favorites for display in the top bar
+    exchange_rate = get_uah_to_eur_rate()
+    approx_total_eur = round(total / exchange_rate, 2) if exchange_rate else 0
+
     user_logged_in = session.get('user_id') is not None
     cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
     favorites = session.get('favorites', []) if user_logged_in else []
 
-    return render_template('cart.html', cart=cart, total=total,
-                           cart_count=cart_count, favorites=favorites,
-                           user_logged_in=user_logged_in)
+    return render_template('cart.html',
+                           cart=cart,
+                           total=total,
+                           cart_count=cart_count,
+                           favorites=favorites,
+                           user_logged_in=user_logged_in,
+                           exchange_rate=exchange_rate,
+                           approx_total_eur=approx_total_eur)
 
 @app.route('/checkout', methods=['GET', 'POST'])
 def checkout():
@@ -709,7 +813,6 @@ def checkout():
 
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
-    """Creates a Stripe Checkout session."""
     user_id = session.get('user_id')
     if not user_id:
         flash('Будь ласка, увійдіть, щоб оформити замовлення.', 'info')
@@ -720,13 +823,17 @@ def create_checkout_session():
         flash('Ваш кошик порожній.', 'info')
         return redirect(url_for('view_cart'))
 
+    exchange_rate = get_uah_to_eur_rate()
     line_items = []
+
     for item in cart:
+        price_uah = item['price']
+        price_eur = round(price_uah / exchange_rate, 2)
         line_items.append({
             'price_data': {
-                'currency': 'uah',
+                'currency': 'eur',
                 'product_data': {'name': item['name']},
-                'unit_amount': int(item['price'] * 100),
+                'unit_amount': int(price_eur * 100),  # rate uah to eur
             },
             'quantity': item['quantity'],
         })
@@ -735,8 +842,7 @@ def create_checkout_session():
         payment_method_types=['card'],
         line_items=line_items,
         mode='payment',
-        success_url=url_for('checkout_success', _external=True)
-                    + '?session_id={CHECKOUT_SESSION_ID}',
+        success_url=url_for('checkout_success', _external=True) + '?session_id={CHECKOUT_SESSION_ID}',
         cancel_url=url_for('checkout_cancel', _external=True),
     )
 
