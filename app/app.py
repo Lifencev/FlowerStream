@@ -695,7 +695,7 @@ def checkout():
     favorites = session.get('favorites', []) if user_logged_in else []
 
     return render_template('checkout.html',
-                           publishable_key=app.config['STRIPE_PUBLISHABLE_KEY'],
+                           stripe_public_key=app.config['STRIPE_PUBLISHABLE_KEY'],
                            cart_count=cart_count, favorites=favorites,
                            user_logged_in=user_logged_in)
 
@@ -733,6 +733,17 @@ def create_checkout_session():
     # --- End Stock Validation ---
 
     exchange_rate = get_uah_to_eur_rate()
+    data = request.get_json()
+    recipient_name = data.get('recipient_name')
+    delivery_address = data.get('delivery_address')
+    phone_number = data.get('phone_number')
+
+    # Validation
+    allowed_chars = set("0123456789+")
+    if not all(char in allowed_chars for char in phone_number):
+        return jsonify({'error': 'Телефон має містити лише цифри та символ +.'}), 400
+    if not recipient_name or not delivery_address or not phone_number:
+        return jsonify({'error': 'Будь ласка, заповніть усі поля доставки.'}), 400
     line_items = []
 
     for item in cart:

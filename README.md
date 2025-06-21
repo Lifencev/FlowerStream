@@ -17,9 +17,9 @@
 ## Технології
 
 -  **Back-end/Front-end**: Python: FlaskAPI + jinja2
--  **Database**: SQLite
+-  **Database**: PostgreSQL
 -  **Auth**: JSON Web Token
--  **Payment**: Stripe
+-  **Payment**: ToDo
 
 
 ## Структура
@@ -52,7 +52,7 @@ FlowerStream/
 - **Git** 
 - **Python** (версія 3.8 або новіша)  
 - **pipenv** (для ізольованого віртуального середовища)  
-- **SQLite** 
+- **PostgreSQL** (версія ≥ 10)  
 
 
 ##  Налаштування
