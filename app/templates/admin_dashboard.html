@@ -30,12 +30,95 @@
         .social-icons a:hover {
             color: #800080;
         }
+        /* Navbar specific styles */
+        .navbar-brand {
+            font-size: 1.7rem;
+            font-weight: bold;
+            color: #800080 !important;
+        }
+        .navbar-nav .nav-link {
+            font-size: 1.1rem;
+        }
     </style>
 </head>
 <body>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light shadow-sm">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('home') }}">FlowerStream</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link" aria-current="page" href="{{ url_for('home') }}">Головна</a>
+                    </li>
+                    {% if user_logged_in %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('view_cart') }}">Кошик</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('view_favorites') }}">Обране</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('orders_history') }}">Історія замовлень</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('profile') }}">Профіль</a>
+                    </li>
+                    {% if session.is_admin %}
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{{ url_for('admin_dashboard') }}">Адмін-панель</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_orders') }}">Управління замовленнями</a>
+                    </li>
+                    {% endif %}
+                    {% endif %}
+                </ul>
+                <ul class="navbar-nav">
+                    {% if user_logged_in %}
+                        <li class="nav-item">
+                            <span class="nav-link text-dark">Привіт, {{ session.username }}!</span>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link btn btn-outline-danger btn-sm" href="{{ url_for('logout') }}">Вийти</a>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link btn btn-outline-primary btn-sm me-2" href="{{ url_for('login') }}">Увійти</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link btn btn-primary btn-sm" href="{{ url_for('register') }}" style="background-color: purple; color: white;">Реєстрація</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
     <div class="container py-4">
-        <h2>Вітаємо в адмін-панелі</h2>
-        <p><a href="{{ url_for('logout') }}">Вийти</a></p>
+        <h1 class="mb-4 text-center">Адмін-панель</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="list-group">
+            <a href="{{ url_for('home') }}" class="list-group-item list-group-item-action">Керувати товарами (перейти на головну сторінку з режимом редагування)</a>
+            <a href="{{ url_for('admin_orders') }}" class="list-group-item list-group-item-action">Управління замовленнями</a>
+        </div>
+
+        <div class="mt-4 text-center">
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">Вийти з системи</a>
+        </div>
     </div>
 
     <footer class="footer mt-auto">
