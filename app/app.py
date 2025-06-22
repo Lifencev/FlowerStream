@@ -1,12 +1,12 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, g
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 import os
 import stripe
-from utils import allowed_file, get_uah_to_eur_rate
-from db import init_db, get_db_connection
-from config import Config
+from app.utils import allowed_file, get_uah_to_eur_rate
+from app.db import init_db, get_db_connection
+from app.config import Config
 from dotenv import load_dotenv, find_dotenv
 from werkzeug.utils import secure_filename
 import uuid # Import uuid for generating unique filenames and reset tokens
