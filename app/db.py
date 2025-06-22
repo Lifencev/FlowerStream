@@ -13,7 +13,8 @@ def get_db_connection():
         database = current_app.config.get('DATABASE')
         if not database:
             raise RuntimeError("Environment variable 'DATABASE' is not set. Check your .env file.")
-        conn = sqlite3.connect(database)
+
+        conn = sqlite3.connect(database, timeout=20)
         conn.row_factory = sqlite3.Row
         g.db = conn
     return g.db
@@ -35,6 +36,7 @@ def init_db():
     cursor = db.cursor()
 
     # Create the users table
+    # Removed 'phone_number' column from here, it will only be stored with orders
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,12 +101,16 @@ def init_db():
     ''')
 
     # New orders table
+    # Added recipient_name, delivery_address, phone_number_at_purchase
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             total_amount REAL NOT NULL,
             status TEXT NOT NULL DEFAULT 'Очікується', -- 'Очікується', 'Підтверджено'
+            recipient_name TEXT,             -- New: Recipient's name for this order
+            delivery_address TEXT,           -- New: Delivery address for this order
+            phone_number_at_purchase TEXT,   -- New: Phone number used for this order
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
@@ -126,6 +132,7 @@ def init_db():
     db.commit()
 
     # Check if the default administrator exists, and add if not
+    # Updated to NOT include phone_number as it's removed from users table
     cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
     if cursor.fetchone()[0] == 0:
         hashed_password = generate_password_hash('admin123')
