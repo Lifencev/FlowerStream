@@ -60,6 +60,14 @@
             border-radius: 4px;
             margin-right: 10px;
         }
+        .btn-purple {
+            background-color: purple;
+            color: white;
+        }
+        .btn-purple:hover {
+            background-color: #660066;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -141,7 +149,9 @@
                 </div>
                 <div class="card-body">
                     <h5 class="card-title">Загальна сума: {{ "%.2f"|format(order.total_amount) }} грн</h5>
-                    <p class="card-text">Номер телефону: {{ order.phone_number }}</p> {# Display phone number #}
+                    <p class="card-text">Ім'я отримувача: <strong>{{ order.recipient_name }}</strong></p>
+                    <p class="card-text">Адреса доставки: <strong>{{ order.delivery_address }}</strong></p>
+                    <p class="card-text">Номер телефону (замовлення): <strong>{{ order.phone_number_at_purchase }}</strong></p>
                     <p class="card-text">Товари:</p>
                     <ul class="list-group list-group-flush mb-3">
                         {% for item in order['items'] %}

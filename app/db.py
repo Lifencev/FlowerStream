@@ -13,8 +13,7 @@ def get_db_connection():
         database = current_app.config.get('DATABASE')
         if not database:
             raise RuntimeError("Environment variable 'DATABASE' is not set. Check your .env file.")
-        # Added a timeout to the connection to prevent 'database is locked' errors.
-        # This makes the connection wait for up to 20 seconds if the database is busy.
+        
         conn = sqlite3.connect(database, timeout=20)
         conn.row_factory = sqlite3.Row
         g.db = conn
@@ -37,14 +36,13 @@ def init_db():
     cursor = db.cursor()
 
     # Create the users table
-    # Added 'phone_number' column
+    # Removed 'phone_number' column from here, it will only be stored with orders
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user',
-            phone_number TEXT -- New phone_number column
+            role TEXT NOT NULL DEFAULT 'user'
             )
         ''')
     db.commit()
@@ -103,12 +101,16 @@ def init_db():
     ''')
 
     # New orders table
+    # Added recipient_name, delivery_address, phone_number_at_purchase
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             total_amount REAL NOT NULL,
             status TEXT NOT NULL DEFAULT 'Очікується', -- 'Очікується', 'Підтверджено'
+            recipient_name TEXT,             -- New: Recipient's name for this order
+            delivery_address TEXT,           -- New: Delivery address for this order
+            phone_number_at_purchase TEXT,   -- New: Phone number used for this order
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
@@ -130,14 +132,14 @@ def init_db():
     db.commit()
 
     # Check if the default administrator exists, and add if not
-    # Updated to include phone_number
+    # Updated to NOT include phone_number as it's removed from users table
     cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
     if cursor.fetchone()[0] == 0:
         hashed_password = generate_password_hash('admin123')
-        cursor.execute("INSERT INTO users (username, password_hash, role, phone_number) VALUES (?, ?, ?, ?)",
-                       ('admin', hashed_password, 'admin', '+380501234567')) # Added a default phone number for admin
+        cursor.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+                       ('admin', hashed_password, 'admin'))
         db.commit()
-        print("Default administrator added (login: admin, password: admin123, phone: +380501234567)")
+        print("Default administrator added (login: admin, password: admin123)")
 
     # Check if initial products exist, and add if not
     cursor.execute("SELECT COUNT(*) FROM products")
