@@ -141,6 +141,7 @@
                 </div>
                 <div class="card-body">
                     <h5 class="card-title">Загальна сума: {{ "%.2f"|format(order.total_amount) }} грн</h5>
+                    <p class="card-text">Номер телефону: {{ order.phone_number }}</p> {# Display phone number #}
                     <p class="card-text">Товари:</p>
                     <ul class="list-group list-group-flush mb-3">
                         {% for item in order['items'] %}

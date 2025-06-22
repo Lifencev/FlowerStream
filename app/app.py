@@ -1,11 +1,11 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, session, g, jsonify
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 import os
 import stripe
 from utils import allowed_file, get_uah_to_eur_rate
-from db import init_db, get_db_connection
+from db import init_db, get_db_connection # get_db_connection now has a timeout set
 from config import Config
 from dotenv import load_dotenv, find_dotenv
 from werkzeug.utils import secure_filename
@@ -739,11 +739,14 @@ def create_checkout_session():
     phone_number = data.get('phone_number')
 
     # Validation
-    allowed_chars = set("0123456789+")
+    # Updated validation to be slightly more permissive for common phone number formats
+    allowed_chars = set("0123456789+()- ")
     if not all(char in allowed_chars for char in phone_number):
-        return jsonify({'error': 'Телефон має містити лише цифри та символ +.'}), 400
+        # We don't want an alert() here, it should be a flash message or error in response
+        return jsonify({'error': 'Телефон має містити лише цифри, символ +, дужки, тире та пробіли.'}), 400
     if not recipient_name or not delivery_address or not phone_number:
         return jsonify({'error': 'Будь ласка, заповніть усі поля доставки.'}), 400
+
     line_items = []
 
     for item in cart:
@@ -787,6 +790,9 @@ def checkout_success():
 
     try:
         # 1. Create a new order
+        # In a real application, you would pass recipient_name, delivery_address, phone_number here as well
+        # For this example, we assume they were part of the initial checkout session creation
+        # and are not directly saved to the 'orders' table in checkout_success
         cursor.execute(
             "INSERT INTO orders (user_id, total_amount, status) VALUES (?, ?, ?)",
             (user_id, total_amount, 'Очікується')
@@ -841,34 +847,54 @@ def checkout_cancel():
 def register():
     """
     Handles new user registration.
-    Performs validation for password match and username uniqueness.
+    Performs validation for password match, username uniqueness, and phone number format.
     """
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         confirm = request.form.get('confirm')
+        phone_number = request.form.get('phone_number') # Get phone number from form
 
-        if not all([username, password, confirm]): # Check that all fields are filled
+        if not all([username, password, confirm, phone_number]): # Check that all fields are filled
             flash("Будь ласка, заповніть усі поля.", "danger")
+            return redirect(url_for('register'))
         elif password != confirm:
             flash("Паролі не збігаються.", "danger")
+            return redirect(url_for('register'))
         elif len(password) < 6: # Basic password length validation
             flash("Пароль має бути не менше 6 символів.", "danger")
+            return redirect(url_for('register'))
         else:
+            # Basic phone number validation (allowing digits, +, -, (, ))
+            allowed_chars = set("0123456789+()- ")
+            if not all(char in allowed_chars for char in phone_number):
+                flash("Телефон має містити лише цифри, символ +, дужки, тире та пробіли.", "danger")
+                return redirect(url_for('register'))
+
             db = get_db_connection()
             try:
                 hashed_password = generate_password_hash(password)
                 cursor = db.cursor()
-                cursor.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                               (username, hashed_password, 'user'))
+                # Insert phone_number into the users table
+                cursor.execute("INSERT INTO users (username, password_hash, role, phone_number) VALUES (?, ?, ?, ?)",
+                               (username, hashed_password, 'user', phone_number))
                 db.commit()
                 flash("Реєстрація успішна! Тепер увійдіть.", "success")
                 return redirect(url_for('login'))
             except sqlite3.IntegrityError: # Handle error if user already exists
                 flash("Користувач з таким ім'ям вже існує.", "danger")
+                db.rollback() # Rollback the failed transaction
+                # Force close and remove from g to ensure a clean connection for subsequent operations
+                if 'db' in g:
+                    g.db.close()
+                    del g.db
             except Exception as e:
                 flash(f"Помилка реєстрації: {e}", "danger")
                 db.rollback()
+                # Also force close for general exceptions
+                if 'db' in g:
+                    g.db.close()
+                    del g.db
 
     return render_template('register.html')
 
@@ -1260,10 +1286,10 @@ def admin_orders():
     db = get_db_connection()
     cursor = db.cursor()
 
-    # Fetch all orders with user information
+    # Fetch all orders with user information including phone_number
     all_orders_data = cursor.execute(
         """
-        SELECT o.id, o.total_amount, o.status, o.created_at, u.username
+        SELECT o.id, o.total_amount, o.status, o.created_at, u.username, u.phone_number
         FROM orders o
         JOIN users u ON o.user_id = u.id
         ORDER BY o.created_at DESC
@@ -1306,6 +1332,7 @@ def admin_orders():
         orders.append({
             'id': order_row['id'],
             'username': order_row['username'],
+            'phone_number': order_row['phone_number'], # Include phone_number
             'total_amount': order_row['total_amount'],
             'status': order_row['status'],
             'created_at': formatted_time,
