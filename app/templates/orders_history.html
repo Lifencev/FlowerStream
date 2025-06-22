@@ -39,6 +39,7 @@
         }
         .navbar-nav .nav-link {
             font-size: 1.1rem;
+            white-space: nowrap;
         }
         .icon-badge-container {
             position: relative;
@@ -130,6 +131,14 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('profile') }}">Профіль</a>
                     </li>
+                    {% if is_admin %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_dashboard') }}">Адмін-панель</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_orders') }}">Управління замовленнями</a>
+                    </li>
+                    {% endif %}
                     {% endif %}
                 </ul>
                 <ul class="navbar-nav">

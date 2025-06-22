@@ -28,7 +28,7 @@
             border-top: 1px solid #e7e7e7;
         }
         .social-icons a {
-            font-size: 1.8rem; /* Increase icon size */
+            font-size: 1.8rem;
             margin: 0 10px;
             color: #495057;
             transition: color 0.3s ease;
@@ -39,24 +39,23 @@
 
         /* Navbar specific styles */
         .navbar-brand {
-            font-size: 1.7rem; /* Make the brand name bigger */
+            font-size: 1.7rem;
             font-weight: bold;
-            color: #800080 !important; /* Force purple color */
+            color: #800080 !important;
         }
         .navbar-nav .nav-link {
-            font-size: 1.1rem; /* Slightly larger nav links */
+            font-size: 1.1rem;
         }
 
-        /* Styles for the icon container and badge to prevent shifting */
         .icon-badge-container {
             position: relative;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 1.5em; /* Fixed width to prevent shift */
-            height: 1.5em; /* Fixed height */
+            width: 1.5em;
+            height: 1.5em;
             vertical-align: middle;
-            margin-left: 5px; /* Space between text and icon */
+            margin-left: 5px;
         }
 
         .icon-badge-container .bi {
@@ -119,14 +118,13 @@
             color: white;
         }
 
-        /* Align "Add to Cart" and "Favorite" buttons to bottom */
         .card-buttons {
             margin-top: auto; /* Pushes buttons to the bottom of the card body */
             padding-top: 15px; /* Add some padding above buttons */
             border-top: 1px solid #eee; /* Separator line */
             display: flex;
             flex-direction: column;
-            gap: 10px; /* Space between buttons */
+            gap: 10px;
         }
         .card-buttons .btn {
             width: 100%; /* Make buttons full width */
@@ -134,7 +132,7 @@
 
         .edit-mode-indicator {
             position: fixed;
-            top: 70px; /* Adjusted to be below the navbar */
+            top: 70px;
             right: 10px;
             background-color: red;
             color: white;
@@ -144,31 +142,29 @@
             z-index: 1000;
         }
 
-        /* Add margin to main container when edit mode is active to prevent overlap */
         body.edit-mode-active .container.py-4 {
-            margin-top: 50px; /* Adjust this value as needed */
+            margin-top: 50px;
         }
 
         /* Styles for quantity input on home page */
         .add-to-cart-form {
             display: flex;
             align-items: center;
-            gap: 5px; /* Reduced gap between input and button */
+            gap: 5px;
             flex-wrap: nowrap; /* Prevent wrapping for input and button */
             width: 100%; /* Ensure the form itself takes full width */
         }
         .add-to-cart-form input[type="number"] {
-            width: 60px; /* Fixed width for the number input */
+            width: 60px;
             text-align: center;
             flex-shrink: 0; /* Prevent from shrinking */
         }
         .add-to-cart-form button {
             flex: 1; /* Allow button to take up remaining space */
-            min-width: unset; /* Remove previous min-width constraint */
+            min-width: unset;
         }
 
-        /* Responsive adjustments for quantity input */
-        @media (max-width: 575.98px) { /* For extra small devices */
+        @media (max-width: 575.98px) {
             .add-to-cart-form {
                 flex-direction: column; /* Stack input and button vertically */
                 align-items: stretch; /* Stretch items to full width */
@@ -426,7 +422,7 @@
                 <a href="https://www.youtube.com/YOUTUBE_CHANNEL" target="_blank" title="YouTube"><i class="bi bi-youtube"></i></a>
                 <a href="https://www.instagram.com/INSTAGRAM_USERNAME" target="_blank" title="Instagram"><i class="bi bi-instagram"></i></a>
             </div>
-            <p class="text-muted mt-2">&copy; {{ 'now' | date('%Y') }} FlowerStream. Всі права захищені.</p>
+            <p class="text-muted mt-2">&copy; {{ 'now' | date('%Y') }} FlowerStream.</p>
         </div>
     </footer>
 
@@ -438,11 +434,11 @@
             const editFlowerNameInput = document.getElementById('editFlowerName');
             const editFlowerDescriptionTextarea = document.getElementById('editFlowerDescription');
             const editFlowerPriceInput = document.getElementById('editFlowerPrice');
-            const editFlowerStockInput = document.getElementById('editFlowerStock'); // Get stock input
+            const editFlowerStockInput = document.getElementById('editFlowerStock');
             const currentFlowerImageText = document.getElementById('currentFlowerImageText');
 
             editFlowerModal.addEventListener('show.bs.modal', function (event) {
-                const button = event.relatedTarget; // Button that triggered the modal
+                const button = event.relatedTarget;
                 const flowerId = button.getAttribute('data-flower-id');
 
                 // Set the form action dynamically based on flowerId
@@ -460,7 +456,7 @@
                         editFlowerNameInput.value = data.name || '';
                         editFlowerDescriptionTextarea.value = data.description || '';
                         editFlowerPriceInput.value = data.price || '';
-                        editFlowerStockInput.value = data.stock || ''; // Populate stock field
+                        editFlowerStockInput.value = data.stock || '';
 
                         // Update current image text
                         if (data.image_url) {
@@ -471,8 +467,7 @@
                         }
                     })
                     .catch(error => {
-                        console.error('Fetch error:', error);
-                        // Using a simple alert for demonstration, consider a more user-friendly modal in production
+                        console.error('Fetch error:', error);                        
                         alert('Помилка мережі при завантаженні даних товару.');
                     });
             });

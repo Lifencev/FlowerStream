@@ -42,7 +42,7 @@
       border-radius: 8px;
       box-shadow: 0 4px 8px rgba(0,0,0,0.05);
       position: sticky;
-      top: 20px; /* Adjust as needed for sticky positioning */
+      top: 20px;
     }
     .cart-item {
       display: flex;
@@ -78,8 +78,7 @@
     .item-quantity-controls {
       display: flex;
       align-items: center;
-      gap: 0.5rem; /* Reduced gap for better spacing */
-      /* Removed flex-wrap: nowrap to allow wrapping on small screens if necessary, but fixed widths should prevent it */
+      gap: 0.5rem;
       margin-left: 1rem;
     }
     .item-quantity-controls button {
@@ -92,14 +91,14 @@
       font-size: 1rem;
       flex-shrink: 0; /* Prevent buttons from shrinking */
     }
-    .item-quantity-controls .quantity-input { /* New class for the input field */
-      width: 60px; /* Fixed width for the input field */
+    .item-quantity-controls .quantity-input {
+      width: 60px;
       text-align: center;
       padding: 0.375rem 0.75rem; /* Bootstrap's default form-control padding */
       flex-shrink: 0; /* Prevent input from shrinking */
     }
     .item-quantity-controls .btn-danger {
-        flex-shrink: 0; /* Ensure delete button doesn't shrink */
+        flex-shrink: 0;
         padding: 0.375rem 0.75rem; /* Restore default button padding for 'Видалити' */
         white-space: nowrap; /* Prevent text from wrapping */
         width: auto; /* Allow width to be determined by content */
@@ -129,16 +128,17 @@
     }
     .navbar-nav .nav-link {
         font-size: 1.1rem;
+        white-space: nowrap; /* Prevent text from wrapping */
     }
 
-    /* Styles for the icon container and badge to prevent shifting */
+    /* Styles for the icon container and badge */
     .icon-badge-container {
         position: relative;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 1.5em; /* Fixed width to prevent shift */
-        height: 1.5em; /* Fixed height */
+        width: 1.5em;
+        height: 1.5em;
         vertical-align: middle;
         margin-left: 5px; /* Space between text and icon */
     }
@@ -164,7 +164,7 @@
     .navbar-nav .nav-link {
         display: flex;
         align-items: center;
-        min-height: 40px; /* To prevent vertical shift, ensure enough space for content + icon + badge */
+        min-height: 40px; /* Ensure enough space for content + icon + badge */
     }
 
     @media (max-width: 767.98px) {
@@ -172,7 +172,7 @@
         flex-direction: column;
       }
       .cart-summary {
-        position: static; /* Remove sticky on mobile */
+        position: static;
         width: 100%;
       }
       .cart-item {
@@ -234,6 +234,14 @@
                   <li class="nav-item">
                       <a class="nav-link" href="{{ url_for('profile') }}">Профіль</a>
                   </li>
+                  {% if is_admin %}
+                  <li class="nav-item">
+                      <a class="nav-link" href="{{ url_for('admin_dashboard') }}">Адмін-панель</a>
+                  </li>
+                  <li class="nav-item">
+                      <a class="nav-link" href="{{ url_for('admin_orders') }}">Управління замовленнями</a>
+                  </li>
+                  {% endif %}
                   {% endif %}
               </ul>
               <ul class="navbar-nav">

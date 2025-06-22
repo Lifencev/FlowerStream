@@ -38,6 +38,33 @@
         }
         .navbar-nav .nav-link {
             font-size: 1.1rem;
+            white-space: nowrap; /* Prevent text from wrapping */
+        }
+        .icon-badge-container { /* Added this for cart/favorites icons */
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.5em;
+            height: 1.5em;
+            vertical-align: middle;
+            margin-left: 5px;
+        }
+        .icon-badge-container .bi { /* Added this for cart/favorites icons */
+            font-size: 1.2em;
+        }
+        .icon-badge { /* Added this for cart/favorites icons */
+            position: absolute;
+            top: 0;
+            right: 0;
+            font-size: 0.6em;
+            padding: 0.15em 0.4em;
+            line-height: 1;
+            min-width: 1.2em;
+            text-align: center;
+            transform: translate(50%, -50%);
+            z-index: 1;
+            border-radius: 50%;
         }
     </style>
 </head>
@@ -55,10 +82,22 @@
                     </li>
                     {% if user_logged_in %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('view_cart') }}">Кошик</a>
+                        <a class="nav-link" href="{{ url_for('view_cart') }}">
+                            Кошик
+                            <span class="icon-badge-container">
+                                <i class="bi bi-cart"></i>
+                                {% if cart_count > 0 %}<span class="badge bg-danger rounded-pill icon-badge">{{ cart_count }}</span>{% endif %}
+                            </span>
+                        </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('view_favorites') }}">Обране</a>
+                        <a class="nav-link" href="{{ url_for('view_favorites') }}">
+                            Обране
+                            <span class="icon-badge-container">
+                                <i class="bi bi-heart"></i>
+                                {% if favorites|length > 0 %}<span class="badge bg-primary rounded-pill icon-badge">{{ favorites|length }}</span>{% endif %}
+                            </span>
+                        </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('orders_history') }}">Історія замовлень</a>
@@ -66,7 +105,7 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('profile') }}">Профіль</a>
                     </li>
-                    {% if session.is_admin %}
+                    {% if is_admin %}
                     <li class="nav-item">
                         <a class="nav-link active" href="{{ url_for('admin_dashboard') }}">Адмін-панель</a>
                     </li>

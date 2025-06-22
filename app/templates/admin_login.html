@@ -68,8 +68,8 @@
         }
         /* Style for the registration link on the login page (main content) */
         .register-link-white {
-            color: white; /* Changed text color to white */
-            background-color: purple; /* Added background to make it look like a button */
+            color: white;
+            background-color: purple;
             padding: 0.375rem 0.75rem; /* Standard Bootstrap button padding */
             border-radius: 0.25rem; /* Standard Bootstrap button border-radius */
             text-decoration: none; /* Remove underline */
@@ -130,7 +130,6 @@
                         </li>
                         <li class="nav-item">
                             <a class="nav-link btn btn-primary btn-sm" href="{{ url_for('register') }}" style="background-color: purple;">Реєстрація</a>
-                            <!-- Changed color of 'Реєстрація' in navbar to white -->
                         </li>
                     {% endif %}
                 </ul>
@@ -179,7 +178,7 @@
                 <a href="https://www.youtube.com/YOUTUBE_CHANNEL" target="_blank" title="YouTube"><i class="bi bi-youtube"></i></a>
                 <a href="https://www.instagram.com/INSTAGRAM_USERNAME" target="_blank" title="Instagram"><i class="bi bi-instagram"></i></a>
             </div>
-            <p class="text-muted mt-2">&copy; {{ 'now' | date('%Y') }} FlowerStream. Всі права захищені.</p>
+            <p class="text-muted mt-2">&copy; {{ 'now' | date('%Y') }} FlowerStream.</p>
         </div>
     </footer>
 

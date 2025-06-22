@@ -4,9 +4,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 import os
 import stripe
-from utils import allowed_file, get_uah_to_eur_rate
-from db import init_db, get_db_connection
-from config import Config
+from app.utils import allowed_file, get_uah_to_eur_rate
+from app.db import init_db, get_db_connection
+from app.config import Config
 from dotenv import load_dotenv, find_dotenv
 from werkzeug.utils import secure_filename
 import uuid # Import uuid for generating unique filenames and reset tokens
@@ -130,9 +130,9 @@ def get_reviews_for_product(product_id):
             'id': row['id'],
             'rating': row['rating'],
             'comment': row['comment'],
-            'created_at': formatted_time, # Now in Kyiv time
+            'created_at': formatted_time,
             'username': row['username'],
-            'user_id': row['user_id'] # Include user_id for deletion logic in template
+            'user_id': row['user_id']
         }
         reviews_data.append(item)
     return reviews_data
@@ -286,7 +286,16 @@ def login():
         else:
             flash('Невірні логін або пароль.', 'danger')
 
-    return render_template('admin_login.html') # Using admin_login.html for general login
+    user_logged_in = session.get('user_id') is not None
+    cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
+    favorites = session.get('favorites', []) if user_logged_in else []
+    is_admin = session.get('is_admin', False)
+
+    return render_template('admin_login.html',
+                           cart_count=cart_count,
+                           favorites=favorites,
+                           user_logged_in=user_logged_in,
+                           is_admin=is_admin)
 
 @app.route('/logout')
 def logout():
@@ -339,13 +348,26 @@ def edit_flower(flower_id):
 
     name = request.form['name']
     description = request.form['description']
-    price = float(request.form['price'])
-    stock = int(request.form['stock']) # Get stock from form
     image_file = request.files.get('image')
 
-    # Basic validation for stock
-    if stock < 0:
-        flash("Кількість товару в наявності не може бути від'ємною.", "danger")
+    # Price validation
+    try:
+        price = float(request.form['price'])
+        if price < 0:
+            flash("Ціна товару не може бути від'ємною.", "danger")
+            return redirect(url_for('home'))
+    except ValueError:
+        flash("Ціна товару повинна бути числом.", "danger")
+        return redirect(url_for('home'))
+
+    # Stock validation
+    try:
+        stock = int(request.form['stock'])
+        if stock < 0:
+            flash("Кількість товару в наявності не може бути від'ємною.", "danger")
+            return redirect(url_for('home'))
+    except ValueError:
+        flash("Кількість товару в наявності повинна бути цілим числом.", "danger")
         return redirect(url_for('home'))
 
 
@@ -436,7 +458,7 @@ def delete_flower(flower_id):
                     print(f"Image deleted: {file_path}")
                 except OSError as e:
                     print(f"Error deleting image {file_path}: {e}")
-                    flash(f"Помилка при видаленні зображення товару: {e}", "warning")
+                    flash(f"Помилка при видаленні старого зображення: {e}", "warning")
 
         flash(f"Товар \"{flower['name']}\" успішно видалено.", "success")
     except Exception as e:
@@ -460,17 +482,20 @@ def add_flower():
 
     name = request.form.get('name')
     description = request.form.get('description')
-    price = request.form.get('price')
-    stock = request.form.get('stock') # Get stock from form
+    price_str = request.form.get('price') # Get as string first
+    stock_str = request.form.get('stock') # Get as string first
     image_file = request.files.get('image')
 
-    if not all([name, price, stock]): # Ensure stock is also provided
+    if not all([name, price_str, stock_str]): # Ensure all basic fields are filled
         flash("Будь ласка, заповніть усі поля: назву, ціну та кількість в наявності.", "danger")
         return redirect(url_for('home'))
 
     try:
-        price = float(price)
-        stock = int(stock)
+        price = float(price_str)
+        if price < 0:
+            flash("Ціна товару не може бути від'ємною.", "danger")
+            return redirect(url_for('home'))
+        stock = int(stock_str)
         if stock < 0:
             flash("Кількість товару в наявності не може бути від'ємною.", "danger")
             return redirect(url_for('home'))
@@ -532,7 +557,7 @@ def add_to_cart(flower_id):
     """
     Adds a specified quantity of an item to the user's cart.
     If the item already exists, increases its quantity.
-    Does NOT check stock at this stage, as per user request.
+    Includes stock validation.
     Requires user to be logged in.
     """
     user_id = session.get('user_id')
@@ -553,6 +578,16 @@ def add_to_cart(flower_id):
     except ValueError:
         quantity = 1 # If conversion to number fails, set to 1
 
+    # Stock Validation
+    if flower['stock'] == 0:
+        flash(f"На жаль, '{flower['name']}' наразі відсутня на складі.", "danger")
+        return redirect(url_for('product_detail', product_id=flower_id))
+
+    if quantity > flower['stock']:
+        flash(f"На жаль, ви не можете додати {quantity} од. '{flower['name']}'. В наявності лише {flower['stock']} од.", "warning")
+        return redirect(url_for('product_detail', product_id=flower_id))
+
+
     db = get_db_connection()
     cursor = db.cursor()
 
@@ -562,6 +597,11 @@ def add_to_cart(flower_id):
 
     if existing_item_db:
         new_quantity = existing_item_db['quantity'] + quantity
+        # Additional check to prevent exceeding stock when updating quantity
+        if new_quantity > flower['stock']:
+            flash(f"Не вдалося оновити кількість '{flower['name']}'. Загальна кількість в кошику ({new_quantity}) перевищує наявний запас ({flower['stock']}).", "warning")
+            return redirect(url_for('product_detail', product_id=flower_id))
+
         cursor.execute("UPDATE cart_items SET quantity = ? WHERE user_id = ? AND flower_id = ?",
                        (new_quantity, user_id, flower_id))
         flash(f"{flower['name']}: кількість збільшено до {new_quantity}.", "success")
@@ -573,13 +613,15 @@ def add_to_cart(flower_id):
 
     # Update cart in session by re-loading from DB to ensure consistency
     session['cart'] = load_user_cart_from_db(user_id)
-    return redirect(url_for('home'))
+    return redirect(url_for('home', product_id=flower_id))
+
 
 @app.route('/update_cart_item_quantity/<int:flower_id>', methods=['POST'])
 def update_cart_item_quantity(flower_id):
     """
     Updates the quantity of a specific item in the user's cart.
     If quantity is 0 or less, the item is removed.
+    Includes stock validation.
     Requires user to be logged in.
     """
     user_id = session.get('user_id')
@@ -596,21 +638,30 @@ def update_cart_item_quantity(flower_id):
     db = get_db_connection()
     cursor = db.cursor()
 
+    flower = get_flower_by_id(flower_id)
+    if not flower:
+        flash('Квітка не знайдена.', 'danger')
+        return redirect(url_for('view_cart'))
+
     if new_quantity <= 0:
         cursor.execute("DELETE FROM cart_items WHERE user_id = ? AND flower_id = ?",
                        (user_id, flower_id))
-        flash(f"Товар видалено з кошика.", "info")
+        flash(f"Товар '{flower['name']}' видалено з кошика.", "info") # Додано назву товару
     else:
+        #Stock Validation for update
+        if new_quantity > flower['stock']:
+            flash(f"Не вдалося оновити кількість '{flower['name']}'. Загальна кількість в кошику ({new_quantity}) перевищує наявний запас ({flower['stock']}).", "warning")
+            return redirect(url_for('view_cart'))
+
+
         cursor.execute("SELECT * FROM cart_items WHERE user_id = ? AND flower_id = ?", (user_id, flower_id))
         existing_item = cursor.fetchone()
         if existing_item:
             cursor.execute("UPDATE cart_items SET quantity = ? WHERE user_id = ? AND flower_id = ?",
                            (new_quantity, user_id, flower_id))
-            flash(f"Кількість товару оновлено до {new_quantity}.", "success")
+            flash(f"Кількість товару '{flower['name']}' оновлено до {new_quantity}.", "success") # Додано назву товару
         else:
             flash("Товар не знайдено в кошику для оновлення.", "danger")
-            # If item doesn't exist, we can optionally add it or just redirect
-            # For this context, we assume it's an update for existing item.
     db.commit()
 
     # Update cart in session by re-loading from DB to ensure consistency
@@ -667,6 +718,7 @@ def view_cart():
     user_logged_in = session.get('user_id') is not None
     cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
     favorites = session.get('favorites', []) if user_logged_in else []
+    is_admin = session.get('is_admin', False) # Передача is_admin
 
     return render_template('cart.html',
                            cart=cart,
@@ -675,7 +727,8 @@ def view_cart():
                            favorites=favorites,
                            user_logged_in=user_logged_in,
                            exchange_rate=exchange_rate,
-                           approx_total_eur=approx_total_eur)
+                           approx_total_eur=approx_total_eur,
+                           is_admin=is_admin)
 
 @app.route('/checkout', methods=['GET', 'POST'])
 def checkout():
@@ -693,11 +746,14 @@ def checkout():
     user_logged_in = session.get('user_id') is not None
     cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
     favorites = session.get('favorites', []) if user_logged_in else []
+    is_admin = session.get('is_admin', False)
+
 
     return render_template('checkout.html',
                            stripe_public_key=app.config['STRIPE_PUBLISHABLE_KEY'],
                            cart_count=cart_count, favorites=favorites,
-                           user_logged_in=user_logged_in)
+                           user_logged_in=user_logged_in,
+                           is_admin=is_admin)
 
 
 @app.route('/create-checkout-session', methods=['POST'])
@@ -721,7 +777,7 @@ def create_checkout_session():
 
     db = get_db_connection()
 
-    # --- Stock Validation ---
+    #Stock Validation
     for item in cart:
         flower = get_flower_by_id(item['id'])
         if not flower:
@@ -731,7 +787,7 @@ def create_checkout_session():
         if item['quantity'] > flower['stock']:
             flash(f"На жаль, товару '{item['name']}' є лише {flower['stock']} одиниць в наявності. Оновіть кількість у кошику.", "warning")
             return redirect(url_for('view_cart'))
-    # --- End Stock Validation ---
+
 
     exchange_rate = get_uah_to_eur_rate()
     data = request.get_json()
@@ -739,18 +795,30 @@ def create_checkout_session():
     delivery_address = data.get('delivery_address')
     phone_number = data.get('phone_number')
 
-    # Validation for delivery details
+    #Phone Number Validation
+    if not phone_number:
+        return jsonify({'error': 'Будь ласка, введіть номер телефону.'}), 400
+
+    cleaned_phone_number = ''.join(filter(str.isdigit, phone_number))
+    
+    # Check if the cleaned number has a reasonable length (e.g., between 7 and 20 digits)
+    if not (7 <= len(cleaned_phone_number) <= 20):
+        return jsonify({'error': 'Номер телефону має містити від 7 до 20 цифр.'}), 400
+
+    # Check if all characters are allowed (digits, +, -, (, ))
     allowed_phone_chars = set("0123456789+()- ")
     if not all(char in allowed_phone_chars for char in phone_number):
-        return jsonify({'error': 'Телефон має містити лише цифри, символ +, дужки, тире та пробіли.'}), 400
-    if not recipient_name or not delivery_address or not phone_number:
+        return jsonify({'error': 'Номер телефону може містити лише цифри, символи +, -, ( та ).'}), 400
+
+    if not recipient_name or not delivery_address: # Phone number already checked
         return jsonify({'error': 'Будь ласка, заповніть усі поля доставки.'}), 400
+    # --- End Advanced Phone Number Validation ---
 
     # Store delivery details in session to be used in checkout_success
     session['checkout_delivery_details'] = {
         'recipient_name': recipient_name,
         'delivery_address': delivery_address,
-        'phone_number_at_purchase': phone_number
+        'phone_number_at_purchase': phone_number # Store original formatted number
     }
 
     line_items = []
@@ -909,7 +977,16 @@ def register():
                     g.db.close()
                     del g.db
 
-    return render_template('register.html')
+    user_logged_in = session.get('user_id') is not None
+    cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
+    favorites = session.get('favorites', []) if user_logged_in else []
+    is_admin = session.get('is_admin', False)
+
+    return render_template('register.html',
+                           cart_count=cart_count,
+                           favorites=favorites,
+                           user_logged_in=user_logged_in,
+                           is_admin=is_admin)
 
 @app.route('/favorites')
 def view_favorites():
@@ -926,10 +1003,12 @@ def view_favorites():
     # Pass cart_count and favorites for display in the top bar
     user_logged_in = session.get('user_id') is not None
     cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
+    is_admin = session.get('is_admin', False)
 
     return render_template('favorites.html', favorites=favorites,
                            cart_count=cart_count,
-                           user_logged_in=user_logged_in)
+                           user_logged_in=user_logged_in,
+                           is_admin=is_admin)
 
 @app.route('/add_to_favorites/<int:flower_id>', methods=['POST'])
 def add_to_favorites(flower_id):
@@ -1015,12 +1094,14 @@ def profile():
     user_logged_in = session.get('user_id') is not None
     cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
     favorites = session.get('favorites', []) if user_logged_in else []
+    is_admin = session.get('is_admin', False)
 
     return render_template('profile.html',
                            username=username,
                            cart_count=cart_count,
                            favorites=favorites,
-                           user_logged_in=user_logged_in)
+                           user_logged_in=user_logged_in,
+                           is_admin=is_admin)
 
 @app.route('/update_password', methods=['POST'])
 def update_password():
@@ -1110,6 +1191,8 @@ def product_detail(product_id):
 
     cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
     favorites = session.get('favorites', []) if user_logged_in else []
+    is_admin = session.get('is_admin', False)
+
 
     return render_template('product_detail.html',
                            flower=flower,
@@ -1118,7 +1201,8 @@ def product_detail(product_id):
                            user_logged_in=user_logged_in,
                            cart_count=cart_count,
                            favorites=favorites,
-                           user_has_reviewed=user_has_reviewed)
+                           user_has_reviewed=user_has_reviewed,
+                           is_admin=is_admin)
 
 # Route for adding a review
 @app.route('/product/<int:product_id>/add_review', methods=['POST'])
@@ -1279,12 +1363,15 @@ def orders_history():
     user_logged_in = session.get('user_id') is not None
     cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
     favorites = session.get('favorites', []) if user_logged_in else []
+    is_admin = session.get('is_admin', False)
+
 
     return render_template('orders_history.html',
                            orders=orders,
                            cart_count=cart_count,
                            favorites=favorites,
-                           user_logged_in=user_logged_in)
+                           user_logged_in=user_logged_in,
+                           is_admin=is_admin)
 
 @app.route('/admin/orders')
 def admin_orders():
@@ -1357,12 +1444,15 @@ def admin_orders():
     user_logged_in = session.get('user_id') is not None
     cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
     favorites = session.get('favorites', []) if user_logged_in else []
+    is_admin = session.get('is_admin', False)
+
 
     return render_template('admin_orders.html',
                            orders=orders,
                            cart_count=cart_count,
                            favorites=favorites,
-                           user_logged_in=user_logged_in)
+                           user_logged_in=user_logged_in,
+                           is_admin=is_admin)
 
 @app.route('/admin_dashboard')
 def admin_dashboard():
@@ -1377,11 +1467,14 @@ def admin_dashboard():
     user_logged_in = session.get('user_id') is not None
     cart_count = sum(item['quantity'] for item in session.get('cart', [])) if user_logged_in else 0
     favorites = session.get('favorites', []) if user_logged_in else []
+    is_admin = session.get('is_admin', False)
+
 
     return render_template('admin_dashboard.html',
                            cart_count=cart_count,
                            favorites=favorites,
-                           user_logged_in=user_logged_in)
+                           user_logged_in=user_logged_in,
+                           is_admin=is_admin)
 
 @app.route('/admin/update_order_status/<int:order_id>', methods=['POST'])
 def update_order_status(order_id):

@@ -37,7 +37,7 @@
         border-top: 1px solid #e7e7e7;
     }
     .social-icons a {
-        font-size: 1.8rem; /* Increase icon size */
+        font-size: 1.8rem;
         margin: 0 10px;
         color: #495057;
         transition: color 0.3s ease;
@@ -54,16 +54,17 @@
     }
     .navbar-nav .nav-link {
         font-size: 1.1rem;
+        white-space: nowrap; /* Prevent text from wrapping */
     }
 
-    /* Styles for the icon container and badge to prevent shifting */
+    /* Styles for the icon container and badge */
     .icon-badge-container {
         position: relative;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 1.5em; /* Fixed width to prevent shift */
-        height: 1.5em; /* Fixed height */
+        width: 1.5em; 
+        height: 1.5em;
         vertical-align: middle;
         margin-left: 5px; /* Space between text and icon */
     }
@@ -89,7 +90,7 @@
     .navbar-nav .nav-link {
         display: flex;
         align-items: center;
-        min-height: 40px; /* To prevent vertical shift, ensure enough space for content + icon + badge */
+        min-height: 40px; /* Ensure enough space for content + icon + badge */
     }
   </style>
 </head>
@@ -111,7 +112,8 @@
                           Кошик
                           <span class="icon-badge-container">
                               <i class="bi bi-cart"></i>
-                              {% if cart_count > 0 %}<span class="badge bg-danger rounded-pill icon-badge">{{ cart_count }}</span>{% endif %}
+                              {# cart_count needs to be passed from Flask route for /favorites #}
+                              {% if cart_count is defined and cart_count > 0 %}<span class="badge bg-danger rounded-pill icon-badge">{{ cart_count }}</span>{% endif %}
                           </span>
                       </a>
                   </li>
@@ -130,6 +132,14 @@
                   <li class="nav-item">
                       <a class="nav-link" href="{{ url_for('profile') }}">Профіль</a>
                   </li>
+                  {% if is_admin %}
+                  <li class="nav-item">
+                      <a class="nav-link" href="{{ url_for('admin_dashboard') }}">Адмін-панель</a>
+                  </li>
+                  <li class="nav-item">
+                      <a class="nav-link" href="{{ url_for('admin_orders') }}">Управління замовленнями</a>
+                  </li>
+                  {% endif %}
                   {% endif %}
               </ul>
               <ul class="navbar-nav">
