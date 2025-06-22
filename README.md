@@ -84,7 +84,7 @@ STRIPE_PUBLISHABLE_KEY=pk_live
 4. Запуск проєкту
 
 ```
-python app/app.py
+python -m app.app
 ```
 
 Відкрийте в браузері http://127.0.0.1:5000
