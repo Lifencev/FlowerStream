@@ -17,9 +17,9 @@
 ## Технології
 
 -  **Back-end/Front-end**: Python: FlaskAPI + jinja2
--  **Database**: PostgreSQL
+-  **Database**: SQLite
 -  **Auth**: JSON Web Token
--  **Payment**: ToDo
+-  **Payment**: Stripe
 
 
 ## Структура
@@ -52,7 +52,7 @@ FlowerStream/
 - **Git** 
 - **Python** (версія 3.8 або новіша)  
 - **pipenv** (для ізольованого віртуального середовища)  
-- **PostgreSQL** (версія ≥ 10)  
+- **SQLite** (sqlite3)
 
 
 ##  Налаштування
@@ -74,29 +74,17 @@ pipenv shell
 ```
 
 3. Налаштування змінних оточення
-
+Переіменуйте .env.example на .env та вставте ключі
 ```
-FLASK_APP=main.py
-FLASK_ENV=development
-SECRET_KEY=ваш_секретний_ключ
-DATABASE_URL=postgresql://username:password@localhost:5432/your_database_name
+STRIPE_SECRET_KEY=sk_live
+STRIPE_PUBLISHABLE_KEY=pk_live
 ```
 
-4. Налаштування PostgreSQL
+
+4. Запуск проєкту
 
 ```
-sudo -u postgres psql
-
-CREATE USER username WITH PASSWORD 'password';
-CREATE DATABASE your_database_name OWNER username;
-GRANT ALL PRIVILEGES ON DATABASE your_database_name TO username;
-\q
-```
-
-5. Запуск проєкту
-
-```
-flask run
+python app/app.py
 ```
 
 Відкрийте в браузері http://127.0.0.1:5000

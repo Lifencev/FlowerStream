@@ -31,7 +31,6 @@
             color: #800080;
         }
 
-        /* Navbar specific styles */
         .navbar-brand {
             font-size: 1.7rem;
             font-weight: bold;
@@ -41,22 +40,19 @@
             font-size: 1.1rem;
         }
 
-        /* Styles for the icon container and badge to prevent shifting */
         .icon-badge-container {
             position: relative;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 1.5em; /* Fixed width to prevent shift */
-            height: 1.5em; /* Fixed height */
+            width: 1.5em;
+            height: 1.5em;
             vertical-align: middle;
-            margin-left: 5px; /* Space between text and icon */
+            margin-left: 5px;
         }
-
         .icon-badge-container .bi {
             font-size: 1.2em;
         }
-
         .icon-badge {
             position: absolute;
             top: 0;
@@ -70,12 +66,6 @@
             z-index: 1;
             border-radius: 50%;
         }
-
-        .navbar-nav .nav-link {
-            display: flex;
-            align-items: center;
-            min-height: 40px; /* To prevent vertical shift, ensure enough space for content + icon + badge */
-        }
     </style>
     <script src="https://js.stripe.com/v3/"></script>
 </head>
@@ -83,21 +73,21 @@
     <nav class="navbar navbar-expand-lg navbar-light bg-light shadow-sm">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('home') }}">FlowerStream</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link" aria-current="page" href="{{ url_for('home') }}">Головна</a>
-                    </li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('home') }}">Головна</a></li>
                     {% if user_logged_in %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('view_cart') }}">
                             Кошик
                             <span class="icon-badge-container">
                                 <i class="bi bi-cart"></i>
-                                {% if cart_count > 0 %}<span class="badge bg-danger rounded-pill icon-badge">{{ cart_count }}</span>{% endif %}
+                                {% if cart_count > 0 %}
+                                <span class="badge bg-danger rounded-pill icon-badge">{{ cart_count }}</span>
+                                {% endif %}
                             </span>
                         </a>
                     </li>
@@ -106,33 +96,31 @@
                             Обране
                             <span class="icon-badge-container">
                                 <i class="bi bi-heart"></i>
-                                {% if favorites|length > 0 %}<span class="badge bg-primary rounded-pill icon-badge">{{ favorites|length }}</span>{% endif %}
+                                {% if favorites|length > 0 %}
+                                <span class="badge bg-primary rounded-pill icon-badge">{{ favorites|length }}</span>
+                                {% endif %}
                             </span>
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('orders_history') }}">Історія замовлень</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('profile') }}">Профіль</a>
-                    </li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('orders_history') }}">Історія замовлень</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('profile') }}">Профіль</a></li>
                     {% endif %}
                 </ul>
                 <ul class="navbar-nav">
                     {% if user_logged_in %}
-                        <li class="nav-item">
-                            <span class="nav-link text-dark">Привіт, {{ session.username }}!</span>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link btn btn-outline-danger btn-sm" href="{{ url_for('logout') }}">Вийти</a>
-                        </li>
+                    <li class="nav-item">
+                        <span class="nav-link text-dark">Привіт, {{ session.username }}!</span>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link btn btn-outline-danger btn-sm" href="{{ url_for('logout') }}">Вийти</a>
+                    </li>
                     {% else %}
-                        <li class="nav-item">
-                            <a class="nav-link btn btn-outline-primary btn-sm me-2" href="{{ url_for('login') }}">Увійти</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link btn btn-primary btn-sm" href="{{ url_for('register') }}" style="background-color: purple; color: white;">Реєстрація</a>
-                        </li>
+                    <li class="nav-item">
+                        <a class="nav-link btn btn-outline-primary btn-sm me-2" href="{{ url_for('login') }}">Увійти</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link btn btn-primary btn-sm" href="{{ url_for('register') }}" style="background-color: purple; color: white;">Реєстрація</a>
+                    </li>
                     {% endif %}
                 </ul>
             </div>
@@ -140,7 +128,6 @@
     </nav>
 
     <div class="container py-4">
-        {# This block displays flash messages #}
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -158,8 +145,19 @@
                 <div class="card shadow-sm">
                     <div class="card-body">
                         <h5 class="card-title text-center mb-4">Деталі замовлення</h5>
-                        <p class="text-center">Будь ласка, натисніть "Оплатити", щоб завершити покупку.</p>
                         <form id="checkout-form" class="mt-4">
+                            <div class="mb-3">
+                                <label for="recipient_name" class="form-label">Ім'я одержувача</label>
+                                <input type="text" class="form-control" id="recipient_name" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="delivery_address" class="form-label">Адреса доставки</label>
+                                <textarea class="form-control" id="delivery_address" rows="3" required></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="phone_number" class="form-label">Номер телефону</label>
+                                <input type="tel" class="form-control" id="phone_number" required>
+                            </div>
                             <button type="submit" class="btn btn-primary w-100" style="background-color: purple; border-color: purple;">Оплатити</button>
                         </form>
                     </div>
@@ -174,11 +172,11 @@
     <footer class="footer mt-auto">
         <div class="container text-end">
             <div class="social-icons">
-                <a href="https://wa.me/PHONE_NUMBER" target="_blank" title="WhatsApp"><i class="bi bi-whatsapp"></i></a>
-                <a href="tel:PHONE_NUMBER" title="Телефон"><i class="bi bi-telephone"></i></a>
-                <a href="https://t.me/tarassts" target="_blank" title="Telegram"><i class="bi bi-telegram"></i></a>
-                <a href="https://www.youtube.com/YOUTUBE_CHANNEL" target="_blank" title="YouTube"><i class="bi bi-youtube"></i></a>
-                <a href="https://www.instagram.com/INSTAGRAM_USERNAME" target="_blank" title="Instagram"><i class="bi bi-instagram"></i></a>
+                <a href="https://wa.me/PHONE_NUMBER" target="_blank"><i class="bi bi-whatsapp"></i></a>
+                <a href="tel:PHONE_NUMBER"><i class="bi bi-telephone"></i></a>
+                <a href="https://t.me/tarassts" target="_blank"><i class="bi bi-telegram"></i></a>
+                <a href="https://www.youtube.com/YOUTUBE_CHANNEL" target="_blank"><i class="bi bi-youtube"></i></a>
+                <a href="https://www.instagram.com/INSTAGRAM_USERNAME" target="_blank"><i class="bi bi-instagram"></i></a>
             </div>
             <p class="text-muted mt-2">&copy; {{ 'now' | date('%Y') }} FlowerStream. Всі права захищені.</p>
         </div>
@@ -186,37 +184,35 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-      const stripe = Stripe("{{ publishable_key }}");
-      document.getElementById("checkout-form").addEventListener("submit", function(e) {
-        e.preventDefault();
-        fetch("{{ url_for('create_checkout_session') }}", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" }
-        })
-        .then(response => {
-            // Check if the response is a redirect (e.g., due to flash message from Flask)
-            if (response.redirected) {
-                window.location.href = response.url; // Follow the redirect
-                return new Promise(() => {}); // Return a never-resolving promise to stop further .then execution
-            }
-            return response.json();
-        })
-        .then(data => {
-            // Only attempt redirectToCheckout if we actually got a session ID
-            if (data && data.sessionId) {
-                stripe.redirectToCheckout({ sessionId: data.sessionId });
-            } else if (data && data.error) {
-                console.error("Stripe error:", data.error);
-                // Flash message is handled by Flask redirect, so this might not be reached for stock errors.
-                // For other Stripe errors (e.g., API issues), a flash message would be better.
-            }
-        })
-        .catch(error => {
-          console.error("Error during fetch or Stripe redirect:", error);
-          // General error message for network issues or unhandled exceptions
-          // The stock validation errors are handled by Flask redirect and flash messages.
+        const stripe = Stripe("{{ stripe_public_key }}");
+        document.getElementById("checkout-form").addEventListener("submit", function (e) {
+            e.preventDefault();
+
+            const formData = {
+                recipient_name: document.getElementById("recipient_name").value,
+                delivery_address: document.getElementById("delivery_address").value,
+                phone_number: document.getElementById("phone_number").value
+            };
+
+            fetch("{{ url_for('create_checkout_session') }}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.sessionId) {
+                    stripe.redirectToCheckout({ sessionId: data.sessionId });
+                } else if (data.error) {
+                    alert("Помилка: " + data.error);
+                    console.error("Stripe error:", data.error);
+                }
+            })
+            .catch(error => {
+                alert("Невідома помилка. Спробуйте ще раз.");
+                console.error("Fetch error:", error);
+            });
         });
-      });
     </script>
 </body>
 </html>

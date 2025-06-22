@@ -4,6 +4,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 import os
 import stripe
+from utils import allowed_file, get_uah_to_eur_rate
+from db import init_db, get_db_connection # get_db_connection now has a timeout set
 from config import Config
 from dotenv import load_dotenv, find_dotenv
 from werkzeug.utils import secure_filename
@@ -11,274 +13,12 @@ import uuid # Import uuid for generating unique filenames and reset tokens
 
 load_dotenv(find_dotenv())
 
-import requests
-
-def get_uah_to_eur_rate():
-    """
-    Fetches the current UAH to EUR exchange rate from the National Bank of Ukraine API.
-    Returns a default value (50.0) in case of an error.
-    """
-    try:
-        response = requests.get("https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?valcode=EUR&json")
-        data = response.json()
-        rate = float(data[0]['rate'])
-        return rate
-    except Exception as e:
-        print(f"Не вдалося отримати курс НБУ: {e}")
-        return 50.0  # extra price in case of error of getting rate
-
 
 app = Flask(__name__)
 app.config.from_object(Config)
 stripe.api_key = app.config['STRIPE_SECRET_KEY']
-DATABASE = os.getenv('DATABASE')
-
-# --- File upload settings ---
-UPLOAD_FOLDER = 'static/images'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-# Ensure the upload folder exists
-full_upload_path = os.path.join(app.root_path, UPLOAD_FOLDER)
-if not os.path.exists(full_upload_path):
-    try:
-        os.makedirs(full_upload_path)
-        print(f"Upload folder created: {full_upload_path}")
-    except OSError as e:
-        print(f"Error creating upload folder {full_upload_path}: {e}")
-        flash(f"Server error: failed to create upload folder. {e}", "danger")
 
 
-def allowed_file(filename):
-    """
-    Checks if the file extension is allowed based on ALLOWED_EXTENSIONS.
-    """
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
-def get_db_connection():
-    """
-    Establishes a database connection.
-    Uses Flask's 'g' object to cache the connection throughout the request,
-    ensuring a single connection per request.
-    """
-    db = getattr(g, '_database', None)
-    if db is None:
-        if DATABASE is None:
-            raise RuntimeError("Environment variable 'DATABASE' is not set. Check your .env file.")
-        db = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row # Allows accessing columns by name
-    return db
-
-
-@app.teardown_appcontext
-def close_connection(exception):
-    """Closes the database connection after the request is complete."""
-    db = getattr(g, '_database', None)
-    if db is not None:
-        db.close()
-
-
-def init_db():
-    """
-    Initializes the database: creates necessary tables (users, products, cart_items, favorite_items, reviews)
-    and adds initial data (administrator, flowers) if they don't exist.
-    """
-    db = get_db_connection()
-    cursor = db.cursor()
-
-    # Create the users table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user'
-            )
-        ''')
-    db.commit()
-
-    # Create the products table
-    # Added 'stock' column with a default value.
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            description TEXT,
-            price REAL NOT NULL,
-            image_url TEXT,
-            stock INTEGER NOT NULL DEFAULT 100 -- New stock column
-        )
-    ''')
-
-    # Create the cart_items table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS cart_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            flower_id INTEGER NOT NULL,
-            quantity INTEGER NOT NULL,
-            UNIQUE(user_id, flower_id),
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-            FOREIGN KEY (flower_id) REFERENCES products (id) ON DELETE CASCADE
-        )
-    ''')
-
-    # Create the favorite_items table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS favorite_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            flower_id INTEGER NOT NULL,
-            UNIQUE(user_id, flower_id),
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-            FOREIGN KEY (flower_id) REFERENCES products (id) ON DELETE CASCADE
-        )
-    ''')
-
-    # New reviews table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS reviews (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            rating INTEGER NOT NULL, -- Rating from 1 to 5
-            comment TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-            CONSTRAINT check_rating CHECK (rating >= 1 AND rating <= 5)
-        )
-    ''')
-
-    # New orders table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            total_amount REAL NOT NULL,
-            status TEXT NOT NULL DEFAULT 'Очікується', -- 'Очікується', 'Підтверджено'
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-        )
-    ''')
-
-    # New order_items table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS order_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            order_id INTEGER NOT NULL,
-            flower_id INTEGER NOT NULL,
-            quantity INTEGER NOT NULL,
-            price_at_purchase REAL NOT NULL, -- Price at the time of purchase
-            FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE,
-            FOREIGN KEY (flower_id) REFERENCES products (id) ON DELETE CASCADE
-        )
-    ''')
-
-    db.commit()
-
-    # Check if the default administrator exists, and add if not
-    cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
-    if cursor.fetchone()[0] == 0:
-        hashed_password = generate_password_hash('admin123')
-        cursor.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                       ('admin', hashed_password, 'admin'))
-        db.commit()
-        print("Default administrator added (login: admin, password: admin123)")
-
-    # Check if initial products exist, and add if not
-    cursor.execute("SELECT COUNT(*) FROM products")
-    if cursor.fetchone()[0] == 0:
-        initial_flowers_data = [
-            {
-                'name': 'Троянда червона',
-                'description': 'Класична червона троянда – символ любові.',
-                'price': 150,
-                'image_url': 'static/images/flower1.jpg',
-                'stock': 50 # Initial stock
-            },
-            {
-                'name': 'Тюльпан жовтий',
-                'description': 'Яскравий тюльпан для гарного настрою.',
-                'price': 90,
-                'image_url': 'static/images/flower2.jpg',
-                'stock': 75 # Initial stock
-            },
-            {
-                'name': 'Лілія біла',
-                'description': 'Ніжна біла лілія – вишуканий подарунок.',
-                'price': 120,
-                'image_url': 'static/images/flower3.jpg',
-                'stock': 30 # Initial stock
-            },
-            {
-                'name': 'Ромашка',
-                'description': 'Світла та ніжна ромашка – символ чистоти.',
-                'price': 80,
-                'image_url': 'static/images/flower4.jpg',
-                'stock': 100 # Initial stock
-            },
-            {
-                'name': 'Гвоздика',
-                'description': 'Яскрава гвоздика – чудовий подарунок.',
-                'price': 95,
-                'image_url': 'static/images/flower5.jpeg',
-                'stock': 60 # Initial stock
-            },
-            {
-                'name': 'Астра',
-                'description': 'Різнобарвна астра додасть настрою.',
-                'price': 85,
-                'image_url': 'static/images/flower6.jpg',
-                'stock': 45 # Initial stock
-            },
-            {
-                'name': 'Незабутка',
-                'description': 'Маленька незабутка – символ пам’яті.',
-                'price': 70,
-                'image_url': 'static/images/flower7.jpg',
-                'stock': 80 # Initial stock
-            },
-            {
-                'name': 'Гладіолус',
-                'description': 'Вишуканий гладіолус для особливих моментів.',
-                'price': 110,
-                'image_url': 'static/images/flower8.jpg',
-                'stock': 25 # Initial stock
-            },
-            {
-                'name': 'Нарцис',
-                'description': 'Весняний нарцис – передвісник тепла.',
-                'price': 90,
-                'image_url': 'static/images/flower9.jpg',
-                'stock': 90 # Initial stock
-            },
-            {
-                'name': 'Крокус',
-                'description': 'Перший весняний крокус – надія і радість.',
-                'price': 75,
-                'image_url': 'static/images/flower10.jpg',
-                'stock': 120 # Initial stock
-            },
-            {
-                'name': 'Гербера',
-                'description': 'Яскрава гербера – посмішка в кожен день.',
-                'price': 100,
-                'image_url': 'static/images/flower11.jpg',
-                'stock': 70 # Initial stock
-            },
-        ]
-        for flower in initial_flowers_data:
-            cursor.execute("INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
-                           (flower['name'], flower['description'], flower['price'], flower['image_url'], flower['stock']))
-        db.commit()
-        print("Initial flowers added to the database.")
-
-    print("Database initialized.")
-
-# Initialize the database when the app context is available
 with app.app_context():
     init_db()
 
@@ -955,7 +695,7 @@ def checkout():
     favorites = session.get('favorites', []) if user_logged_in else []
 
     return render_template('checkout.html',
-                           publishable_key=app.config['STRIPE_PUBLISHABLE_KEY'],
+                           stripe_public_key=app.config['STRIPE_PUBLISHABLE_KEY'],
                            cart_count=cart_count, favorites=favorites,
                            user_logged_in=user_logged_in)
 
@@ -993,6 +733,20 @@ def create_checkout_session():
     # --- End Stock Validation ---
 
     exchange_rate = get_uah_to_eur_rate()
+    data = request.get_json()
+    recipient_name = data.get('recipient_name')
+    delivery_address = data.get('delivery_address')
+    phone_number = data.get('phone_number')
+
+    # Validation
+    # Updated validation to be slightly more permissive for common phone number formats
+    allowed_chars = set("0123456789+()- ")
+    if not all(char in allowed_chars for char in phone_number):
+        # We don't want an alert() here, it should be a flash message or error in response
+        return jsonify({'error': 'Телефон має містити лише цифри, символ +, дужки, тире та пробіли.'}), 400
+    if not recipient_name or not delivery_address or not phone_number:
+        return jsonify({'error': 'Будь ласка, заповніть усі поля доставки.'}), 400
+
     line_items = []
 
     for item in cart:
@@ -1036,6 +790,9 @@ def checkout_success():
 
     try:
         # 1. Create a new order
+        # In a real application, you would pass recipient_name, delivery_address, phone_number here as well
+        # For this example, we assume they were part of the initial checkout session creation
+        # and are not directly saved to the 'orders' table in checkout_success
         cursor.execute(
             "INSERT INTO orders (user_id, total_amount, status) VALUES (?, ?, ?)",
             (user_id, total_amount, 'Очікується')
@@ -1090,34 +847,54 @@ def checkout_cancel():
 def register():
     """
     Handles new user registration.
-    Performs validation for password match and username uniqueness.
+    Performs validation for password match, username uniqueness, and phone number format.
     """
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         confirm = request.form.get('confirm')
+        phone_number = request.form.get('phone_number') # Get phone number from form
 
-        if not all([username, password, confirm]): # Check that all fields are filled
+        if not all([username, password, confirm, phone_number]): # Check that all fields are filled
             flash("Будь ласка, заповніть усі поля.", "danger")
+            return redirect(url_for('register'))
         elif password != confirm:
             flash("Паролі не збігаються.", "danger")
+            return redirect(url_for('register'))
         elif len(password) < 6: # Basic password length validation
             flash("Пароль має бути не менше 6 символів.", "danger")
+            return redirect(url_for('register'))
         else:
+            # Basic phone number validation (allowing digits, +, -, (, ))
+            allowed_chars = set("0123456789+()- ")
+            if not all(char in allowed_chars for char in phone_number):
+                flash("Телефон має містити лише цифри, символ +, дужки, тире та пробіли.", "danger")
+                return redirect(url_for('register'))
+
             db = get_db_connection()
             try:
                 hashed_password = generate_password_hash(password)
                 cursor = db.cursor()
-                cursor.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                               (username, hashed_password, 'user'))
+                # Insert phone_number into the users table
+                cursor.execute("INSERT INTO users (username, password_hash, role, phone_number) VALUES (?, ?, ?, ?)",
+                               (username, hashed_password, 'user', phone_number))
                 db.commit()
                 flash("Реєстрація успішна! Тепер увійдіть.", "success")
                 return redirect(url_for('login'))
             except sqlite3.IntegrityError: # Handle error if user already exists
                 flash("Користувач з таким ім'ям вже існує.", "danger")
+                db.rollback() # Rollback the failed transaction
+                # Force close and remove from g to ensure a clean connection for subsequent operations
+                if 'db' in g:
+                    g.db.close()
+                    del g.db
             except Exception as e:
                 flash(f"Помилка реєстрації: {e}", "danger")
                 db.rollback()
+                # Also force close for general exceptions
+                if 'db' in g:
+                    g.db.close()
+                    del g.db
 
     return render_template('register.html')
 
@@ -1509,10 +1286,10 @@ def admin_orders():
     db = get_db_connection()
     cursor = db.cursor()
 
-    # Fetch all orders with user information
+    # Fetch all orders with user information including phone_number
     all_orders_data = cursor.execute(
         """
-        SELECT o.id, o.total_amount, o.status, o.created_at, u.username
+        SELECT o.id, o.total_amount, o.status, o.created_at, u.username, u.phone_number
         FROM orders o
         JOIN users u ON o.user_id = u.id
         ORDER BY o.created_at DESC
@@ -1555,6 +1332,7 @@ def admin_orders():
         orders.append({
             'id': order_row['id'],
             'username': order_row['username'],
+            'phone_number': order_row['phone_number'], # Include phone_number
             'total_amount': order_row['total_amount'],
             'status': order_row['status'],
             'created_at': formatted_time,
