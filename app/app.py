@@ -1,12 +1,12 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, g
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 import os
 import stripe
-from utils import allowed_file, get_uah_to_eur_rate
-from db import init_db, get_db_connection
-from config import Config
+from app.utils import allowed_file, get_uah_to_eur_rate
+from app.db import init_db, get_db_connection
+from app.config import Config
 from dotenv import load_dotenv, find_dotenv
 from werkzeug.utils import secure_filename
 import uuid # Import uuid for generating unique filenames and reset tokens
@@ -706,6 +706,7 @@ def create_checkout_session():
     Creates a Stripe Checkout Session for payment processing.
     Calculates prices in EUR based on the current exchange rate.
     Performs stock validation before proceeding.
+    Stores recipient name, delivery address, and phone number in session for checkout_success.
     Requires user to be logged in and cart not to be empty.
     """
     user_id = session.get('user_id')
@@ -738,12 +739,20 @@ def create_checkout_session():
     delivery_address = data.get('delivery_address')
     phone_number = data.get('phone_number')
 
-    # Validation
-    allowed_chars = set("0123456789+")
-    if not all(char in allowed_chars for char in phone_number):
-        return jsonify({'error': 'Телефон має містити лише цифри та символ +.'}), 400
+    # Validation for delivery details
+    allowed_phone_chars = set("0123456789+()- ")
+    if not all(char in allowed_phone_chars for char in phone_number):
+        return jsonify({'error': 'Телефон має містити лише цифри, символ +, дужки, тире та пробіли.'}), 400
     if not recipient_name or not delivery_address or not phone_number:
         return jsonify({'error': 'Будь ласка, заповніть усі поля доставки.'}), 400
+
+    # Store delivery details in session to be used in checkout_success
+    session['checkout_delivery_details'] = {
+        'recipient_name': recipient_name,
+        'delivery_address': delivery_address,
+        'phone_number_at_purchase': phone_number
+    }
+
     line_items = []
 
     for item in cart:
@@ -768,6 +777,8 @@ def create_checkout_session():
         )
         return jsonify({'sessionId': checkout_session.id})
     except stripe.error.StripeError as e:
+        # Clear delivery details from session if Stripe checkout creation fails
+        session.pop('checkout_delivery_details', None)
         flash(f"Помилка при створенні сесії оплати: {e}", "danger")
         return jsonify({'error': str(e)}), 400
 
@@ -776,7 +787,8 @@ def create_checkout_session():
 def checkout_success():
     """
     Handles successful Stripe payment. Clears the user's cart in the database and session.
-    Also, *decreases product stock* by ordered quantities and creates an order record.
+    Also, *decreases product stock* by ordered quantities and creates an order record,
+    including delivery details from the session.
     """
     user_id = session.get('user_id')
     db = get_db_connection()
@@ -785,11 +797,22 @@ def checkout_success():
     cart = session.get('cart', [])
     total_amount = sum(item['price'] * item['quantity'] for item in cart)
 
+    # Retrieve delivery details from session
+    delivery_details = session.pop('checkout_delivery_details', None)
+    if not delivery_details:
+        flash("Помилка: Не вдалося отримати дані доставки. Будь ласка, спробуйте ще раз.", "danger")
+        return redirect(url_for('view_cart'))
+
+    recipient_name = delivery_details.get('recipient_name')
+    delivery_address = delivery_details.get('delivery_address')
+    phone_number_at_purchase = delivery_details.get('phone_number_at_purchase')
+
+
     try:
-        # 1. Create a new order
+        # 1. Create a new order with all collected details
         cursor.execute(
-            "INSERT INTO orders (user_id, total_amount, status) VALUES (?, ?, ?)",
-            (user_id, total_amount, 'Очікується')
+            "INSERT INTO orders (user_id, total_amount, status, recipient_name, delivery_address, phone_number_at_purchase) VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, total_amount, 'Очікується', recipient_name, delivery_address, phone_number_at_purchase)
         )
         order_id = cursor.lastrowid # Get the ID of the newly created order
 
@@ -832,7 +855,8 @@ def checkout_success():
 
 @app.route('/checkout/cancel')
 def checkout_cancel():
-    """Handles Stripe payment cancellation."""
+    """Handles Stripe payment cancellation. Also clears delivery details from session."""
+    session.pop('checkout_delivery_details', None) # Clear delivery details
     flash("Оплата скасована, ви повернулися до кошика.", "warning")
     return redirect(url_for('view_cart'))
 
@@ -842,23 +866,29 @@ def register():
     """
     Handles new user registration.
     Performs validation for password match and username uniqueness.
+    Phone number input is removed from registration.
     """
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         confirm = request.form.get('confirm')
+        # Removed phone_number from registration form data
 
         if not all([username, password, confirm]): # Check that all fields are filled
             flash("Будь ласка, заповніть усі поля.", "danger")
+            return redirect(url_for('register'))
         elif password != confirm:
             flash("Паролі не збігаються.", "danger")
+            return redirect(url_for('register'))
         elif len(password) < 6: # Basic password length validation
             flash("Пароль має бути не менше 6 символів.", "danger")
+            return redirect(url_for('register'))
         else:
             db = get_db_connection()
             try:
                 hashed_password = generate_password_hash(password)
                 cursor = db.cursor()
+                # Insert user without phone_number
                 cursor.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
                                (username, hashed_password, 'user'))
                 db.commit()
@@ -866,9 +896,18 @@ def register():
                 return redirect(url_for('login'))
             except sqlite3.IntegrityError: # Handle error if user already exists
                 flash("Користувач з таким ім'ям вже існує.", "danger")
+                db.rollback() # Rollback the failed transaction
+                # Force close and remove from g to ensure a clean connection for subsequent operations
+                if 'db' in g:
+                    g.db.close()
+                    del g.db
             except Exception as e:
                 flash(f"Помилка реєстрації: {e}", "danger")
                 db.rollback()
+                # Also force close for general exceptions
+                if 'db' in g:
+                    g.db.close()
+                    del g.db
 
     return render_template('register.html')
 
@@ -1006,7 +1045,7 @@ def update_password():
         flash("Новий пароль та підтвердження не збігаються.", "danger")
         return redirect(url_for('profile'))
 
-    if len(new_password) < 6: # Basic new password length validation
+    if len(new_password) < 6:
         flash("Новий пароль має бути не менше 6 символів.", "danger")
         return redirect(url_for('profile'))
 
@@ -1260,10 +1299,10 @@ def admin_orders():
     db = get_db_connection()
     cursor = db.cursor()
 
-    # Fetch all orders with user information
+    # Fetch all orders with user information including recipient_name, delivery_address, phone_number_at_purchase
     all_orders_data = cursor.execute(
         """
-        SELECT o.id, o.total_amount, o.status, o.created_at, u.username
+        SELECT o.id, o.total_amount, o.status, o.created_at, u.username, o.recipient_name, o.delivery_address, o.phone_number_at_purchase
         FROM orders o
         JOIN users u ON o.user_id = u.id
         ORDER BY o.created_at DESC
@@ -1306,6 +1345,9 @@ def admin_orders():
         orders.append({
             'id': order_row['id'],
             'username': order_row['username'],
+            'recipient_name': order_row['recipient_name'],
+            'delivery_address': order_row['delivery_address'],
+            'phone_number_at_purchase': order_row['phone_number_at_purchase'],
             'total_amount': order_row['total_amount'],
             'status': order_row['status'],
             'created_at': formatted_time,
@@ -1394,11 +1436,17 @@ def create_test_order():
 
     total_amount = sum(item['price'] * item['quantity'] for item in cart)
 
+    # For test order, dummy delivery details
+    recipient_name = "Стасько Тарас"
+    delivery_address = "Шевченка вул. 1, місто Київ, 02000"
+    phone_number_at_purchase = "+380991234567"
+
+
     try:
-        # 1. Create a new order with 'Очікується' status
+        # 1. Create a new order with 'Очікується' status and delivery details
         cursor.execute(
-            "INSERT INTO orders (user_id, total_amount, status) VALUES (?, ?, ?)",
-            (user_id, total_amount, 'Очікується')
+            "INSERT INTO orders (user_id, total_amount, status, recipient_name, delivery_address, phone_number_at_purchase) VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, total_amount, 'Очікується', recipient_name, delivery_address, phone_number_at_purchase)
         )
         order_id = cursor.lastrowid # Get the ID of the newly created order
 
