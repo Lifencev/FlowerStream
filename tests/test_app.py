@@ -1,467 +1,365 @@
-import unittest
-from app import app, flowers
-from flask import get_flashed_messages 
+import os
+import sqlite3
+import datetime
+import pytest
 
-class FlaskAppTests(unittest.TestCase):
+from app.app import (
+    app,
+    load_products_from_db,
+    get_reviews_for_product,
+    get_average_rating_for_product,
+    load_user_cart_from_db,
+    save_user_cart_to_db,
+    load_user_favorites_from_db,
+    save_user_favorites_to_db, get_flower_by_id, format_date,
+)
 
-    # Цей метод виконується перед кожним тестом
-    def setUp(self):
-        app.config['TESTING'] = True
-        app.config['WTF_CSRF_ENABLED'] = False
-        app.config['DEBUG'] = False
-        self.app = app.test_client()
-        with self.app as client:
-            with client.session_transaction() as sess:
-                sess.clear()
-        print(f"\n--- Початок тесту: {self._testMethodName} ---") # Додаємо вивід початку тесту
+@pytest.fixture(autouse=True)
+def patch_db(monkeypatch, tmp_path):
+    db_file = tmp_path / "test.db"
+    conn = sqlite3.connect(str(db_file))
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE products (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            description TEXT,
+            price REAL,
+            image_url TEXT,
+            stock INTEGER
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password_hash TEXT,
+            role TEXT
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id INTEGER,
+            user_id INTEGER,
+            rating INTEGER,
+            comment TEXT,
+            created_at TEXT
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE TABLE cart_items (user_id INTEGER, flower_id INTEGER, quantity INTEGER)"
+    )
+    cursor.execute(
+        "CREATE TABLE favorite_items (user_id INTEGER, flower_id INTEGER)"
+    )
+    conn.commit()
+    # Monkeypatch the database connection in the app module
+    monkeypatch.setattr('app.app.get_db_connection', lambda: conn)
+    return conn
 
-    # Цей метод виконується після кожного тесту
-    def tearDown(self):
-        print(f"--- Кінець тесту: {self._testMethodName} ---\n") # Додаємо вивід кінця тесту
-
-
-    # Тест головної сторінки
-    def test_home_page(self):
-        print("  Виконуємо GET запит до '/'")
-        response = self.app.get('/')
-        print(f"  Статус код відповіді: {response.status_code}")
-        self.assertEqual(response.status_code, 200) 
-        print("  Перевіряємо наявність 'FlowerStream' у відповіді.")
-        self.assertIn('FlowerStream', response.data.decode('utf-8')) 
-        print("  Тест головної сторінки успішно завершено.")
-
-    # Тест входу адміністратора (успішний)
-    def test_admin_login_success(self):
-        print("  Виконуємо POST запит до '/admin/login' з коректними даними.")
-        with self.app as client:
-            response = client.post('/admin/login', data=dict(
-                username='admin',
-                password='admin123'
-            ), follow_redirects=True) 
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            
-            flashed_messages = [str(m) for m in get_flashed_messages()]
-            print(f"  Отримані Flash-повідомлення: {flashed_messages}")
-            print("  Перевіряємо наявність 'Успішний вхід!' у Flash-повідомленнях.")
-            self.assertIn('Успішний вхід!', flashed_messages)
-            
-            with client.session_transaction() as sess:
-                print(f"  Перевіряємо стан сесії: admin_logged_in = {sess.get('admin_logged_in')}")
-                self.assertTrue(sess.get('admin_logged_in')) 
-            print("  Тест успішного входу адміністратора завершено.")
-
-    # Тест входу адміністратора (невдалий)
-    def test_admin_login_failure(self):
-        print("  Виконуємо POST запит до '/admin/login' з некоректними даними.")
-        with self.app as client:
-            response = client.post('/admin/login', data=dict(
-                username='wrong_admin',
-                password='wrong_password'
-            ), follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            
-            flashed_messages = [str(m) for m in get_flashed_messages()]
-            print(f"  Отримані Flash-повідомлення: {flashed_messages}")
-            print("  Перевіряємо наявність 'Невірні дані' у Flash-повідомленнях.")
-            self.assertIn('Невірні дані', flashed_messages)
-            
-            with client.session_transaction() as sess:
-                print(f"  Перевіряємо стан сесії: admin_logged_in = {sess.get('admin_logged_in')}")
-                self.assertFalse(sess.get('admin_logged_in')) 
-            print("  Тест невдалого входу адміністратора завершено.")
-
-    # Тест виходу адміністратора
-    def test_admin_logout(self):
-        print("  Спочатку входимо як адмін для підготовки тесту.")
-        with self.app as client:
-            with client.session_transaction() as sess:
-                sess['admin_logged_in'] = True
-            print("  Виконуємо GET запит до '/admin/logout'.")
-            response = client.get('/admin/logout', follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            
-            flashed_messages = [str(m) for m in get_flashed_messages()]
-            print(f"  Отримані Flash-повідомлення: {flashed_messages}")
-            print("  Перевіряємо наявність 'Ви вийшли з системи.' у Flash-повідомленнях.")
-            self.assertIn('Ви вийшли з системи.', flashed_messages)
-            
-            with client.session_transaction() as sess:
-                print(f"  Перевіряємо стан сесії: admin_logged_in = {sess.get('admin_logged_in')}")
-                self.assertFalse(sess.get('admin_logged_in'))
-            print("  Тест виходу адміністратора завершено.")
-
-    # Тест додавання товару в кошик
-    def test_add_to_cart(self):
-        flower_id = flowers[0]['id'] 
-        print(f"  Додаємо товар з ID {flower_id} до кошика.")
-        with self.app as client:
-            response = client.post(f'/add_to_cart/{flower_id}', follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            
-            flashed_messages = [str(m) for m in get_flashed_messages()]
-            print(f"  Отримані Flash-повідомлення: {flashed_messages}")
-            self.assertIn(f"{flowers[0]['name']} додано до кошика.", flashed_messages)
-            
-            with client.session_transaction() as sess:
-                cart = sess.get('cart')
-                print(f"  Вміст кошика у сесії: {cart}")
-                self.assertIsNotNone(cart)
-                self.assertEqual(len(cart), 1)
-                self.assertEqual(cart[0]['id'], flower_id)
-                self.assertEqual(cart[0]['quantity'], 1)
-            print("  Тест додавання товару в кошик завершено.")
-
-    # Тест додавання того ж товару в кошик (збільшення кількості)
-    def test_add_same_item_to_cart_increases_quantity(self):
-        flower_id = flowers[0]['id']
-        with self.app as client:
-            print(f"  Додаємо товар з ID {flower_id} перший раз.")
-            client.post(f'/add_to_cart/{flower_id}')
-            print(f"  Додаємо товар з ID {flower_id} другий раз.")
-            response = client.post(f'/add_to_cart/{flower_id}', follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            
-            flashed_messages = [str(m) for m in get_flashed_messages()]
-            print(f"  Отримані Flash-повідомлення: {flashed_messages}")
-            self.assertIn(f"{flowers[0]['name']} додано до кошика.", flashed_messages)
-            
-            with client.session_transaction() as sess:
-                cart = sess.get('cart')
-                print(f"  Вміст кошика у сесії: {cart}")
-                self.assertIsNotNone(cart)
-                self.assertEqual(len(cart), 1) 
-                self.assertEqual(cart[0]['id'], flower_id)
-                self.assertEqual(cart[0]['quantity'], 2) 
-            print("  Тест збільшення кількості товару в кошику завершено.")
-
-    # Тест видалення товару з кошика
-    def test_remove_from_cart(self):
-        with self.app as client:
-            flower_id = flowers[0]['id']
-            print(f"  Додаємо товар з ID {flower_id} до кошика для підготовки.")
-            client.post(f'/add_to_cart/{flower_id}')
-            with client.session_transaction() as sess:
-                print(f"  Кошик до видалення: {sess.get('cart', [])}")
-                self.assertEqual(len(sess.get('cart', [])), 1)
-
-            print("  Виконуємо POST запит для видалення першого елемента з кошика.")
-            response = client.post('/remove_from_cart/0', follow_redirects=True) 
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            
-            flashed_messages = [str(m) for m in get_flashed_messages()]
-            print(f"  Отримані Flash-повідомлення: {flashed_messages}")
-            self.assertIn(f"{flowers[0]['name']} видалено з кошика.", flashed_messages)
-            
-            with client.session_transaction() as sess:
-                print(f"  Кошик після видалення: {sess.get('cart', [])}")
-                self.assertEqual(len(sess.get('cart', [])), 0) 
-            print("  Тест видалення товару з кошика завершено.")
-
-    # Тест збільшення кількості товару в кошику
-    def test_increase_quantity(self):
-        with self.app as client:
-            flower_id = flowers[0]['id']
-            print(f"  Додаємо товар з ID {flower_id} до кошика.")
-            client.post(f'/add_to_cart/{flower_id}')
-            with client.session_transaction() as sess:
-                print(f"  Початкова кількість товару: {sess['cart'][0]['quantity']}")
-                self.assertEqual(sess['cart'][0]['quantity'], 1)
-
-            print("  Виконуємо POST запит для збільшення кількості.")
-            response = client.post('/increase_quantity/0', follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            with client.session_transaction() as sess:
-                print(f"  Кількість товару після збільшення: {sess['cart'][0]['quantity']}")
-                self.assertEqual(sess['cart'][0]['quantity'], 2)
-            print("  Тест збільшення кількості товару завершено.")
-
-    # Тест зменшення кількості товару в кошику
-    def test_decrease_quantity(self):
-        with self.app as client:
-            flower_id = flowers[0]['id']
-            print(f"  Додаємо товар з ID {flower_id} двічі для початкової кількості 2.")
-            client.post(f'/add_to_cart/{flower_id}')
-            client.post(f'/add_to_cart/{flower_id}') 
-            with client.session_transaction() as sess:
-                print(f"  Початкова кількість товару: {sess['cart'][0]['quantity']}")
-                self.assertEqual(sess['cart'][0]['quantity'], 2)
-
-            print("  Виконуємо POST запит для зменшення кількості.")
-            response = client.post('/decrease_quantity/0', follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            with client.session_transaction() as sess:
-                print(f"  Кількість товару після зменшення: {sess['cart'][0]['quantity']}")
-                self.assertEqual(sess['cart'][0]['quantity'], 1)
-            print("  Тест зменшення кількості товару завершено.")
-
-    # Тест зменшення кількості товару до 0 (не має зменшитись нижче 1)
-    def test_decrease_quantity_to_zero(self):
-        with self.app as client:
-            flower_id = flowers[0]['id']
-            print(f"  Додаємо товар з ID {flower_id} для початкової кількості 1.")
-            client.post(f'/add_to_cart/{flower_id}')
-            with client.session_transaction() as sess:
-                print(f"  Початкова кількість товару: {sess['cart'][0]['quantity']}")
-                self.assertEqual(sess['cart'][0]['quantity'], 1)
-
-            print("  Виконуємо POST запит для зменшення кількості (має залишитися 1).")
-            response = client.post('/decrease_quantity/0', follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            with client.session_transaction() as sess:
-                print(f"  Кількість товару після спроби зменшення: {sess['cart'][0]['quantity']}")
-                self.assertEqual(sess['cart'][0]['quantity'], 1) 
-            print("  Тест зменшення кількості товару до 0 завершено.")
-
-    # Тест перегляду кошика
-    def test_view_cart(self):
-        print("  Виконуємо GET запит до '/cart'.")
-        response = self.app.get('/cart')
-        print(f"  Статус код відповіді: {response.status_code}")
-        self.assertEqual(response.status_code, 200)
-        print("  Перевіряємо наявність 'Ваш кошик' у відповіді.")
-        self.assertIn('Ваш кошик', response.data.decode('utf-8'))
-        print("  Перевіряємо наявність 'Кошик порожній.' у відповіді.")
-        self.assertIn('Кошик порожній.', response.data.decode('utf-8'))
-        print("  Тест перегляду кошика завершено.")
-
-    # Тест оформлення замовлення (успішний)
-    def test_checkout_success(self):
-        with self.app as client:
-            flower_id = flowers[0]["id"]
-            print(f"  Додаємо товар з ID {flower_id} до кошика для підготовки оформлення замовлення.")
-            client.post(f'/add_to_cart/{flower_id}')
-            print("  Виконуємо POST запит до '/checkout' з коректними даними.")
-            response = client.post('/checkout', data=dict(
-                full_name='Test User',
-                address='Київ, Україна',
-                notes='Додаткові нотатки',
-                agree='yes'
-            ), follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            
-            flashed_messages = [str(m) for m in get_flashed_messages()]
-            print(f"  Отримані Flash-повідомлення: {flashed_messages}")
-            self.assertIn('Замовлення оформлено! Дякуємо!', flashed_messages)
-            
-            with client.session_transaction() as sess:
-                print(f"  Перевіряємо стан кошика у сесії після оформлення: {sess.get('cart')}")
-                self.assertIsNone(sess.get('cart')) 
-            print("  Тест успішного оформлення замовлення завершено.")
-
-    # Тест оформлення замовлення (невдалий - відсутні поля)
-    def test_checkout_missing_fields(self):
-        with self.app as client:
-            flower_id = flowers[0]["id"]
-            print(f"  Додаємо товар з ID {flower_id} до кошика для підготовки оформлення замовлення.")
-            client.post(f'/add_to_cart/{flower_id}')
-            print("  Виконуємо POST запит до '/checkout' з відсутніми даними.")
-            response = client.post('/checkout', data=dict(
-                full_name='', 
-                address='Київ, Україна',
-                notes='Додаткові нотатки',
-                agree='yes'
-            ), follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            
-            flashed_messages = [str(m) for m in get_flashed_messages()]
-            print(f"  Отримані Flash-повідомлення: {flashed_messages}")
-            self.assertIn("Заповніть обов'язкові поля та погодьтесь з умовами.", flashed_messages)
-            
-            with client.session_transaction() as sess:
-                print(f"  Перевіряємо стан кошика у сесії: {sess.get('cart')}")
-                self.assertIsNotNone(sess.get('cart')) 
-            print("  Тест невдалого оформлення замовлення завершено.")
-
-    # Тест реєстрації (успішний)
-    def test_register_success(self):
-        with self.app as client:
-            print("  Виконуємо POST запит до '/register' з коректними даними.")
-            response = client.post('/register', data=dict(
-                username='newuser',
-                password='newpassword',
-                confirm='newpassword'
-            ), follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            
-            flashed_messages = [str(m) for m in get_flashed_messages()]
-            print(f"  Отримані Flash-повідомлення: {flashed_messages}")
-            self.assertIn('Реєстрація успішна! Тепер увійдіть.', flashed_messages)
-            
-            print("  Перевіряємо перенаправлення на 'Вхід адміністратора'.")
-            self.assertIn('Вхід адміністратора', response.data.decode('utf-8'))
-            print("  Тест успішної реєстрації завершено.")
-
-    # Тест реєстрації (паролі не збігаються)
-    def test_register_password_mismatch(self):
-        with self.app as client:
-            print("  Виконуємо POST запит до '/register' з незбіжними паролями.")
-            response = client.post('/register', data=dict(
-                username='testuser',
-                password='password1',
-                confirm='password2'
-            ), follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            
-            flashed_messages = [str(m) for m in get_flashed_messages()]
-            print(f"  Отримані Flash-повідомлення: {flashed_messages}")
-            self.assertIn('Паролі не збігаються.', flashed_messages)
-            print("  Тест реєстрації з незбіжними паролями завершено.")
-
-    # Тест реєстрації (відсутні поля)
-    def test_register_missing_fields(self):
-        with self.app as client:
-            print("  Виконуємо POST запит до '/register' з відсутніми полями.")
-            response = client.post('/register', data=dict(
-                username='testuser',
-                password='password',
-                confirm='' 
-            ), follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            
-            flashed_messages = [str(m) for m in get_flashed_messages()]
-            print(f"  Отримані Flash-повідомлення: {flashed_messages}")
-            self.assertIn('Будь ласка, заповніть усі поля.', flashed_messages)
-            print("  Тест реєстрації з відсутніми полями завершено.")
-
-    # Тест додавання товару до обраного
-    def test_add_to_favorites(self):
-        flower_id = flowers[0]['id']
-        print(f"  Додаємо товар з ID {flower_id} до обраного.")
-        with self.app as client:
-            response = client.post(f'/add_to_favorites/{flower_id}', follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            
-            flashed_messages = [str(m) for m in get_flashed_messages()]
-            print(f"  Отримані Flash-повідомлення: {flashed_messages}")
-            self.assertIn(f"{flowers[0]['name']} додано в обране.", flashed_messages)
-            
-            with client.session_transaction() as sess:
-                favorites = sess.get('favorites')
-                print(f"  Вміст обраного у сесії: {favorites}")
-                self.assertIsNotNone(favorites)
-                self.assertEqual(len(favorites), 1)
-                self.assertEqual(favorites[0]['id'], flower_id)
-            print("  Тест додавання товару до обраного завершено.")
-
-    # Тест додавання того ж товару до обраного (вже є)
-    def test_add_same_item_to_favorites_already_exists(self):
-        flower_id = flowers[0]['id']
-        with self.app as client:
-            print(f"  Додаємо товар з ID {flower_id} до обраного (перший раз).")
-            client.post(f'/add_to_favorites/{flower_id}')
-            print(f"  Спроба додати той самий товар з ID {flower_id} до обраного (вдруге).")
-            response = client.post(f'/add_to_favorites/{flower_id}', follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            
-            flashed_messages = [str(m) for m in get_flashed_messages()]
-            print(f"  Отримані Flash-повідомлення: {flashed_messages}")
-            self.assertIn('Ця квітка вже в обраному.', flashed_messages)
-            
-            with client.session_transaction() as sess:
-                favorites = sess.get('favorites')
-                print(f"  Вміст обраного у сесії: {favorites}")
-                self.assertEqual(len(favorites), 1) 
-            print("  Тест додавання того ж товару до обраного завершено.")
-
-    # Тест видалення товару з обраного
-    def test_remove_from_favorites(self):
-        with self.app as client:
-            flower_id = flowers[0]['id']
-            print(f"  Додаємо товар з ID {flower_id} до обраного для підготовки.")
-            client.post(f'/add_to_favorites/{flower_id}')
-            with client.session_transaction() as sess:
-                print(f"  Обране до видалення: {sess.get('favorites', [])}")
-                self.assertEqual(len(sess.get('favorites', [])), 1)
-
-            print(f"  Виконуємо POST запит для видалення товару з ID {flower_id} з обраного.")
-            response = client.post(f'/remove_from_favorites/{flower_id}', follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            
-            flashed_messages = [str(m) for m in get_flashed_messages()]
-            print(f"  Отримані Flash-повідомлення: {flashed_messages}")
-            self.assertIn('Товар видалено з обраного.', flashed_messages)
-            
-            with client.session_transaction() as sess:
-                print(f"  Обране після видалення: {sess.get('favorites', [])}")
-                self.assertEqual(len(sess.get('favorites', [])), 0) 
-            print("  Тест видалення товару з обраного завершено.")
-
-    # Тест перегляду обраного
-    def test_view_favorites(self):
-        print("  Виконуємо GET запит до '/favorites'.")
-        response = self.app.get('/favorites')
-        print(f"  Статус код відповіді: {response.status_code}")
-        self.assertEqual(response.status_code, 200)
-        print("  Перевіряємо наявність 'Улюблені товари' у відповіді.")
-        self.assertIn('Улюблені товари', response.data.decode('utf-8'))
-        print("  Перевіряємо наявність 'У вас ще немає улюблених товарів.' у відповіді.")
-        self.assertIn('У вас ще немає улюблених товарів.', response.data.decode('utf-8'))
-        print("  Тест перегляду обраного завершено.")
-
-    # Тест редагування квітки адміністратором
-    def test_edit_flower_as_admin(self):
-        flower_id = flowers[0]['id']
-        with self.app as client:
-            print("  Входимо як адмін для можливості редагування.")
-            with client.session_transaction() as sess:
-                sess['admin_logged_in'] = True
-            
-            new_name = 'Нова назва троянди'
-            new_description = 'Оновлений опис'
-            new_price = 175.50
-            print(f"  Виконуємо POST запит до '/edit/{flower_id}' для оновлення квітки.")
-            response = client.post(f'/edit/{flower_id}', data=dict(
-                name=new_name,
-                description=new_description,
-                price=new_price
-            ), follow_redirects=True)
-            print(f"  Статус код відповіді: {response.status_code}")
-            self.assertEqual(response.status_code, 200)
-            
-            flashed_messages = [str(m) for m in get_flashed_messages()]
-            print(f"  Отримані Flash-повідомлення: {flashed_messages}")
-            self.assertIn(f"Квітка #{flower_id} оновлена.", flashed_messages)
-            
-            updated_flower = next((f for f in flowers if f['id'] == flower_id), None)
-            print(f"  Оновлені дані квітки у списку: {updated_flower}")
-            self.assertIsNotNone(updated_flower)
-            self.assertEqual(updated_flower['name'], new_name)
-            self.assertEqual(updated_flower['description'], new_description)
-            self.assertEqual(updated_flower['price'], new_price)
-            print("  Тест редагування квітки адміністратором завершено.")
-
-    # Тест редагування квітки без входу адміністратора
-    def test_edit_flower_without_admin_login(self):
-        flower_id = flowers[0]['id']
-        print(f"  Спроба редагування квітки з ID {flower_id} без входу адміна.")
-        response = self.app.post(f'/edit/{flower_id}', data=dict(
-            name='Спроба редагування',
-            description='Спроба',
-            price=1.0
-        ), follow_redirects=True)
-        print(f"  Статус код відповіді: {response.status_code}")
-        self.assertEqual(response.status_code, 200)
-        print("  Перевіряємо перенаправлення на 'Вхід адміністратора'.")
-        self.assertIn('Вхід адміністратора', response.data.decode('utf-8'))
-        print("  Тест редагування квітки без входу адміністратора завершено.")
+@pytest.fixture
+def client(patch_db):
+    app.config['TESTING'] = True
+    with app.test_client() as client:
+        yield client
 
 
-if __name__ == '__main__':
-    unittest.main()
+def test_load_products_from_db_empty():
+    products = load_products_from_db()
+    assert products == []
+
+
+def test_load_products_from_db_search_and_sort(patch_db):
+    conn = patch_db
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("Rose", "Red rose", 10.0, None, 5)
+    )
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("Tulip", "Yellow tulip", 5.0, None, 3)
+    )
+    conn.commit()
+    products = load_products_from_db()
+    assert [p['name'] for p in products] == ['Rose', 'Tulip']
+    products = load_products_from_db(sort_order='price_desc')
+    assert [p['name'] for p in products] == ['Rose', 'Tulip']
+    products = load_products_from_db(search_term='yellow')
+    assert [p['name'] for p in products] == ['Tulip']
+
+
+def test_get_flower_data_route(client, patch_db):
+    conn = patch_db
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("Daisy", "White daisy", 7.5, "static/images/daisy.jpg", 10)
+    )
+    conn.commit()
+    response = client.get('/get_flower_data/1')
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['name'] == 'Daisy'
+    response = client.get('/get_flower_data/999')
+    assert response.status_code == 404
+
+
+def test_get_reviews_and_average_rating(patch_db):
+    conn = patch_db
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("Krokus", "", 8.0, None, 2)
+    )
+    cursor.execute(
+        "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+        ("user1", "hash", "user")
+    )
+    utc1 = "2025-01-01 00:00:00"
+    utc2 = "2025-01-02 12:30:00"
+    cursor.execute(
+        "INSERT INTO reviews (product_id, user_id, rating, comment, created_at) VALUES (?, ?, ?, ?, ?)",
+        (1, 1, 4, "Nice", utc1)
+    )
+    cursor.execute(
+        "INSERT INTO reviews (product_id, user_id, rating, comment, created_at) VALUES (?, ?, ?, ?, ?)",
+        (1, 1, 2, "Okay", utc2)
+    )
+    conn.commit()
+    reviews = get_reviews_for_product(1)
+    assert reviews[0]['rating'] == 2
+    assert reviews[0]['created_at'] == "2025-01-02 15:30:00"
+    avg = get_average_rating_for_product(1)
+    assert avg == 3.0
+
+
+def test_cart_and_favorites(patch_db):
+    conn = patch_db
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+        ("user2", "hash", "user")
+    )
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("Orchid", "", 12.0, None, 4)
+    )
+    conn.commit()
+    assert load_user_cart_from_db(1) == []
+    save_user_cart_to_db(1, [{'id': 1, 'quantity': 2}])
+    cart = load_user_cart_from_db(1)
+    assert len(cart) == 1 and cart[0]['id'] == 1 and cart[0]['quantity'] == 2
+    assert load_user_favorites_from_db(1) == []
+    save_user_favorites_to_db(1, [{'id': 1}])
+    favs = load_user_favorites_from_db(1)
+    assert len(favs) == 1 and favs[0]['id'] == 1
+
+
+
+def test_get_flower_by_id_valid(patch_db):
+    conn = patch_db
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("Sunflower", "Bright", 3.0, None, 7)
+    )
+    conn.commit()
+    flower = get_flower_by_id(1)
+    assert flower is not None
+    assert flower['name'] == "Sunflower"
+    assert flower['stock'] == 7
+
+
+def test_get_flower_by_id_invalid(patch_db):
+    assert get_flower_by_id(999) is None
+
+
+def test_format_date_datetime_object():
+    dt = datetime.datetime(2021, 12, 31, 23, 59, 59)
+    assert format_date(dt, "%d/%m/%Y") == "31/12/2021"
+
+
+def test_format_date_string_input():
+    value = "2025-01-01 08:00:00"
+    assert format_date(value, "%Y-%m-%d") == "2025-01-01"
+
+
+def test_format_date_invalid_input():
+    assert format_date("not a date", "%Y") == "not a date"
+
+
+def test_average_rating_no_reviews(patch_db):
+    conn = patch_db
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("Orchid", "", 12.0, None, 4)
+    )
+    conn.commit()
+    assert get_average_rating_for_product(1) == 0.0
+
+
+def test_save_user_cart_overwrites(patch_db):
+    conn = patch_db
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("Iris", "", 6.0, None, 2)
+    )
+    conn.commit()
+    save_user_cart_to_db(1, [{'id': 1, 'quantity': 1}])
+    save_user_cart_to_db(1, [{'id': 1, 'quantity': 5}])
+    cart = load_user_cart_from_db(1)
+    assert len(cart) == 1
+    assert cart[0]['quantity'] == 5
+
+
+def test_save_user_favorites_overwrites(patch_db):
+    conn = patch_db
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)"
+    ,   ("favuser", "hash", "user"))
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("Peony", "", 9.0, None, 3)
+    )
+    conn.commit()
+    save_user_favorites_to_db(1, [{'id': 1}])
+    save_user_favorites_to_db(1, [])
+    favs = load_user_favorites_from_db(1)
+    assert favs == []
+
+
+def test_load_products_sort_newest(patch_db):
+    conn = patch_db
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("A", "", 1.0, None, 1)
+    )
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("B", "", 2.0, None, 2)
+    )
+    conn.commit()
+    products = load_products_from_db(sort_order='newest')
+    assert [p['name'] for p in products] == ['B', 'A']
+
+
+
+def test_load_products_sort_price_asc(patch_db):
+    conn = patch_db
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("Cheap", "", 1.0, None, 10)
+    )
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("Expensive", "", 100.0, None, 5)
+    )
+    conn.commit()
+    products = load_products_from_db(sort_order='price_asc')
+    assert [p['price'] for p in products] == [1.0, 100.0]
+
+
+def test_load_products_sort_name_desc(patch_db):
+    conn = patch_db
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("Alpha", "", 1.0, None, 1)
+    )
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("Beta", "", 2.0, None, 1)
+    )
+    conn.commit()
+    products = load_products_from_db(sort_order='name_desc')
+    assert [p['name'] for p in products] == ['Beta', 'Alpha']
+
+
+def test_load_products_sort_oldest(patch_db):
+    conn = patch_db
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("First", "", 1.0, None, 1)
+    )
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("Second", "", 2.0, None, 2)
+    )
+    conn.commit()
+    products = load_products_from_db(sort_order='oldest')
+    assert [p['name'] for p in products] == ['First', 'Second']
+
+
+def test_load_products_case_insensitive_search(patch_db):
+    conn = patch_db
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("MiXeD", "CaSe", 1.0, None, 1)
+    )
+    conn.commit()
+    products_lower = load_products_from_db(search_term='mixed')
+    products_upper = load_products_from_db(search_term='MIXED')
+    assert len(products_lower) == 1
+    assert len(products_upper) == 1
+
+
+def test_load_user_cart_multiple_items(patch_db):
+    conn = patch_db
+    cursor = conn.cursor()
+    # Insert products
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("One", "", 1.0, None, 1)
+    )
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("Two", "", 2.0, None, 2)
+    )
+    conn.commit()
+    save_user_cart_to_db(1, [{'id': 1, 'quantity': 1}, {'id': 2, 'quantity': 2}])
+    cart = load_user_cart_from_db(1)
+    assert len(cart) == 2
+    assert {item['id'] for item in cart} == {1, 2}
+
+
+def test_load_user_favorites_multiple_items(patch_db):
+    conn = patch_db
+    cursor = conn.cursor()
+    # Insert user and products
+    cursor.execute(
+        "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+        ("favuser2", "hash", "user")
+    )
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("FavOne", "", 1.0, None, 1)
+    )
+    cursor.execute(
+        "INSERT INTO products (name, description, price, image_url, stock) VALUES (?, ?, ?, ?, ?)",
+        ("FavTwo", "", 2.0, None, 2)
+    )
+    conn.commit()
+    save_user_favorites_to_db(1, [{'id': 1}, {'id': 2}])
+    favs = load_user_favorites_from_db(1)
+    assert len(favs) == 2
+    assert {f['id'] for f in favs} == {1, 2}
+
+
+def test_get_reviews_for_product_no_reviews(patch_db):
+    assert get_reviews_for_product(1) == []

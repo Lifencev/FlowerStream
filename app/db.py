@@ -103,12 +103,16 @@ def init_db():
     ''')
 
     # New orders table
+    # Added recipient_name, delivery_address, phone_number_at_purchase
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             total_amount REAL NOT NULL,
             status TEXT NOT NULL DEFAULT 'Очікується', -- 'Очікується', 'Підтверджено'
+            recipient_name TEXT,             -- New: Recipient's name for this order
+            delivery_address TEXT,           -- New: Delivery address for this order
+            phone_number_at_purchase TEXT,   -- New: Phone number used for this order
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )

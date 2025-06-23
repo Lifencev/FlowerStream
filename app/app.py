@@ -706,6 +706,7 @@ def create_checkout_session():
     Creates a Stripe Checkout Session for payment processing.
     Calculates prices in EUR based on the current exchange rate.
     Performs stock validation before proceeding.
+    Stores recipient name, delivery address, and phone number in session for checkout_success.
     Requires user to be logged in and cart not to be empty.
     """
     user_id = session.get('user_id')
@@ -771,6 +772,8 @@ def create_checkout_session():
         )
         return jsonify({'sessionId': checkout_session.id})
     except stripe.error.StripeError as e:
+        # Clear delivery details from session if Stripe checkout creation fails
+        session.pop('checkout_delivery_details', None)
         flash(f"Помилка при створенні сесії оплати: {e}", "danger")
         return jsonify({'error': str(e)}), 400
 
@@ -779,7 +782,8 @@ def create_checkout_session():
 def checkout_success():
     """
     Handles successful Stripe payment. Clears the user's cart in the database and session.
-    Also, *decreases product stock* by ordered quantities and creates an order record.
+    Also, *decreases product stock* by ordered quantities and creates an order record,
+    including delivery details from the session.
     """
     user_id = session.get('user_id')
     db = get_db_connection()
@@ -794,8 +798,8 @@ def checkout_success():
         # For this example, we assume they were part of the initial checkout session creation
         # and are not directly saved to the 'orders' table in checkout_success
         cursor.execute(
-            "INSERT INTO orders (user_id, total_amount, status) VALUES (?, ?, ?)",
-            (user_id, total_amount, 'Очікується')
+            "INSERT INTO orders (user_id, total_amount, status, recipient_name, delivery_address, phone_number_at_purchase) VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, total_amount, 'Очікується', recipient_name, delivery_address, phone_number_at_purchase)
         )
         order_id = cursor.lastrowid # Get the ID of the newly created order
 
@@ -838,7 +842,8 @@ def checkout_success():
 
 @app.route('/checkout/cancel')
 def checkout_cancel():
-    """Handles Stripe payment cancellation."""
+    """Handles Stripe payment cancellation. Also clears delivery details from session."""
+    session.pop('checkout_delivery_details', None) # Clear delivery details
     flash("Оплата скасована, ви повернулися до кошика.", "warning")
     return redirect(url_for('view_cart'))
 
@@ -858,11 +863,14 @@ def register():
         if not all([username, password, confirm, phone_number]): # Check that all fields are filled
             flash("Будь ласка, заповніть усі поля.", "danger")
             return redirect(url_for('register'))
+            return redirect(url_for('register'))
         elif password != confirm:
             flash("Паролі не збігаються.", "danger")
             return redirect(url_for('register'))
+            return redirect(url_for('register'))
         elif len(password) < 6: # Basic password length validation
             flash("Пароль має бути не менше 6 символів.", "danger")
+            return redirect(url_for('register'))
             return redirect(url_for('register'))
         else:
             # Basic phone number validation (allowing digits, +, -, (, ))
@@ -888,9 +896,18 @@ def register():
                 if 'db' in g:
                     g.db.close()
                     del g.db
+                db.rollback() # Rollback the failed transaction
+                # Force close and remove from g to ensure a clean connection for subsequent operations
+                if 'db' in g:
+                    g.db.close()
+                    del g.db
             except Exception as e:
                 flash(f"Помилка реєстрації: {e}", "danger")
                 db.rollback()
+                # Also force close for general exceptions
+                if 'db' in g:
+                    g.db.close()
+                    del g.db
                 # Also force close for general exceptions
                 if 'db' in g:
                     g.db.close()
@@ -1032,7 +1049,7 @@ def update_password():
         flash("Новий пароль та підтвердження не збігаються.", "danger")
         return redirect(url_for('profile'))
 
-    if len(new_password) < 6: # Basic new password length validation
+    if len(new_password) < 6:
         flash("Новий пароль має бути не менше 6 символів.", "danger")
         return redirect(url_for('profile'))
 
@@ -1421,11 +1438,17 @@ def create_test_order():
 
     total_amount = sum(item['price'] * item['quantity'] for item in cart)
 
+    # For test order, dummy delivery details
+    recipient_name = "Стасько Тарас"
+    delivery_address = "Шевченка вул. 1, місто Київ, 02000"
+    phone_number_at_purchase = "+380991234567"
+
+
     try:
-        # 1. Create a new order with 'Очікується' status
+        # 1. Create a new order with 'Очікується' status and delivery details
         cursor.execute(
-            "INSERT INTO orders (user_id, total_amount, status) VALUES (?, ?, ?)",
-            (user_id, total_amount, 'Очікується')
+            "INSERT INTO orders (user_id, total_amount, status, recipient_name, delivery_address, phone_number_at_purchase) VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, total_amount, 'Очікується', recipient_name, delivery_address, phone_number_at_purchase)
         )
         order_id = cursor.lastrowid # Get the ID of the newly created order
 
