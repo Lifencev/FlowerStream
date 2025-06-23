@@ -42,7 +42,7 @@
       border-radius: 8px;
       box-shadow: 0 4px 8px rgba(0,0,0,0.05);
       position: sticky;
-      top: 20px;
+      top: 20px; /* Adjust as needed for sticky positioning */
     }
     .cart-item {
       display: flex;
@@ -78,7 +78,8 @@
     .item-quantity-controls {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.5rem; /* Reduced gap for better spacing */
+      /* Removed flex-wrap: nowrap to allow wrapping on small screens if necessary, but fixed widths should prevent it */
       margin-left: 1rem;
     }
     .item-quantity-controls button {
@@ -91,14 +92,14 @@
       font-size: 1rem;
       flex-shrink: 0; /* Prevent buttons from shrinking */
     }
-    .item-quantity-controls .quantity-input {
-      width: 60px;
+    .item-quantity-controls .quantity-input { /* New class for the input field */
+      width: 60px; /* Fixed width for the input field */
       text-align: center;
       padding: 0.375rem 0.75rem; /* Bootstrap's default form-control padding */
       flex-shrink: 0; /* Prevent input from shrinking */
     }
     .item-quantity-controls .btn-danger {
-        flex-shrink: 0;
+        flex-shrink: 0; /* Ensure delete button doesn't shrink */
         padding: 0.375rem 0.75rem; /* Restore default button padding for 'Видалити' */
         white-space: nowrap; /* Prevent text from wrapping */
         width: auto; /* Allow width to be determined by content */
@@ -137,8 +138,8 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 1.5em;
-        height: 1.5em;
+        width: 1.5em; /* Fixed width to prevent shift */
+        height: 1.5em; /* Fixed height */
         vertical-align: middle;
         margin-left: 5px; /* Space between text and icon */
     }
@@ -172,7 +173,7 @@
         flex-direction: column;
       }
       .cart-summary {
-        position: static;
+        position: static; /* Remove sticky on mobile */
         width: 100%;
       }
       .cart-item {
@@ -285,7 +286,7 @@
         <div class="cart-items">
           {% for item in cart %}
           <div class="cart-item">
-            <img src="{{ url_for('static', filename=item.image_url.split('static/')[-1]) }}" alt="{{ item.name }}" class="img-fluid">
+            <img src="{{ url_for('static', filename=item.image_url.split('static/')[-1]) if item.image_url else 'https://placehold.co/100x100/A0A0A0/FFFFFF?text=Без+фото' }}" alt="{{ item.name }}" class="img-fluid">
             <div class="item-details">
               <h5>{{ item.name }}</h5>
               <p>{{ item.description }}</p>

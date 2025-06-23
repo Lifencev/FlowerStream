@@ -39,7 +39,7 @@
         }
         .navbar-nav .nav-link {
             font-size: 1.1rem;
-            white-space: nowrap;
+            white-space: nowrap; /* Prevent text from wrapping */
         }
         .icon-badge-container {
             position: relative;
@@ -192,7 +192,7 @@
                     <ul class="list-group list-group-flush">
                         {% for item in order['items'] %}
                         <li class="list-group-item d-flex align-items-center">
-                            <img src="{{ url_for('static', filename=item.image_url.split('static/')[-1]) }}" alt="{{ item.name }}" class="order-item-img">
+                            <img src="{{ url_for('static', filename=item.image_url.split('static/')[-1]) if item.image_url else 'https://placehold.co/100x100/A0A0A0/FFFFFF?text=Без+фото' }}" alt="{{ item.name }}" class="order-item-img">
                             {{ item.name }} (x{{ item.quantity }}) - {{ "%.2f"|format(item.price_at_purchase) }} грн за од.
                         </li>
                         {% endfor %}

@@ -37,7 +37,7 @@
         border-top: 1px solid #e7e7e7;
     }
     .social-icons a {
-        font-size: 1.8rem;
+        font-size: 1.8rem; /* Increase icon size */
         margin: 0 10px;
         color: #495057;
         transition: color 0.3s ease;
@@ -63,8 +63,8 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 1.5em; 
-        height: 1.5em;
+        width: 1.5em; /* Fixed width to prevent shift */
+        height: 1.5em; /* Fixed height */
         vertical-align: middle;
         margin-left: 5px; /* Space between text and icon */
     }
@@ -183,7 +183,7 @@
       <div class="col">
         <div class="card favorite-card">
           <a href="{{ url_for('product_detail', product_id=flower.id) }}">
-            <img src="{{ url_for('static', filename=flower.image_url.split('static/')[-1]) }}" class="card-img-top" alt="{{ flower.name }}">
+            <img src="{{ url_for('static', filename=flower.image_url.split('static/')[-1]) if flower.image_url else 'https://placehold.co/100x100/A0A0A0/FFFFFF?text=Без+фото' }}" class="card-img-top" alt="{{ flower.name }}">
           </a>
           <div class="card-body">
             <h5 class="card-title">{{ flower.name }}</h5>

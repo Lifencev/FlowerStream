@@ -69,7 +69,7 @@
             background-color: #660066;
             color: white;
         }
-        .icon-badge-container { 
+        .icon-badge-container { /* Added this for cart/favorites icons */
             position: relative;
             display: inline-flex;
             align-items: center;
@@ -79,10 +79,10 @@
             vertical-align: middle;
             margin-left: 5px;
         }
-        .icon-badge-container .bi { 
+        .icon-badge-container .bi { /* Added this for cart/favorites icons */
             font-size: 1.2em;
         }
-        .icon-badge { 
+        .icon-badge { /* Added this for cart/favorites icons */
             position: absolute;
             top: 0;
             right: 0;
@@ -139,7 +139,7 @@
                         <a class="nav-link" href="{{ url_for('admin_dashboard') }}">Адмін-панель</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link active" href="{{ url_for('admin_orders') }}">Управління замовленнями</a>
+                        <a class="nav-link" href="{{ url_for('admin_orders') }}">Управління замовленнями</a>
                     </li>
                     {% endif %}
                     {% endif %}
@@ -198,7 +198,7 @@
                     <ul class="list-group list-group-flush mb-3">
                         {% for item in order['items'] %}
                         <li class="list-group-item d-flex align-items-center">
-                            <img src="{{ url_for('static', filename=item.image_url.split('static/')[-1]) }}" alt="{{ item.name }}" class="order-item-img">
+                            <img src="{{ url_for('static', filename=item.image_url.split('static/')[-1]) if item.image_url else 'https://placehold.co/100x100/A0A0A0/FFFFFF?text=Без+фото' }}" alt="{{ item.name }}" class="order-item-img">
                             {{ item.name }} (x{{ item.quantity }}) - {{ "%.2f"|format(item.price_at_purchase) }} грн за од.
                         </li>
                         {% endfor %}
