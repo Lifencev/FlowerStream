@@ -74,6 +74,7 @@ pipenv shell
 ```
 
 3. Налаштування змінних оточення.
+3. Налаштування змінних оточення.
 Переіменуйте .env.example на .env та вставте ключі
 ```
 STRIPE_SECRET_KEY=sk_live
@@ -84,6 +85,7 @@ STRIPE_PUBLISHABLE_KEY=pk_live
 4. Запуск проєкту
 
 ```
+python -m app.app
 python -m app.app
 ```
 

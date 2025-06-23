@@ -13,7 +13,7 @@ def get_db_connection():
         database = current_app.config.get('DATABASE')
         if not database:
             raise RuntimeError("Environment variable 'DATABASE' is not set. Check your .env file.")
-        
+
         conn = sqlite3.connect(database, timeout=20)
         conn.row_factory = sqlite3.Row
         g.db = conn
