@@ -73,7 +73,7 @@ pipenv install
 pipenv shell
 ```
 
-3. Налаштування змінних оточення
+3. Налаштування змінних оточення.
 Переіменуйте .env.example на .env та вставте ключі
 ```
 STRIPE_SECRET_KEY=sk_live
@@ -84,7 +84,7 @@ STRIPE_PUBLISHABLE_KEY=pk_live
 4. Запуск проєкту
 
 ```
-python app/app.py
+python -m app.app
 ```
 
 Відкрийте в браузері http://127.0.0.1:5000
